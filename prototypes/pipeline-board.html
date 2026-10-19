@@ -1,0 +1,361 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — not production code. In-memory only.
+  Question: How should moving applicants through the hiring stages look and feel?
+  Three variants share the same rules (Q10–Q12): A drag-and-drop board, B move-menu board, C table.
+-->
+<html lang="en" data-theme="corporate">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Board Prototype</title>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<style>
+  body { padding-bottom: 4rem; }
+  #proto-bar { font-family: ui-monospace, monospace; }
+  .col-ok    { outline: 3px solid #16a34a; outline-offset: -3px; }
+  .col-note  { outline: 3px solid #d97706; outline-offset: -3px; }
+  .col-no    { opacity: .35; }
+  .vtext { writing-mode: vertical-rl; transform: rotate(180deg); }
+</style>
+</head>
+<body class="bg-base-200 min-h-screen">
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toast" class="toast toast-top toast-end z-[60]"></div>
+
+<div id="proto-bar" class="fixed bottom-0 inset-x-0 z-50 bg-black text-white text-xs flex flex-wrap items-center gap-3 px-3 py-2">
+  <span class="text-yellow-300">PROTOTYPE</span>
+  <button onclick="step(-1)" class="px-2 border border-white/40 rounded">←</button>
+  <span id="variant-label"></span>
+  <button onclick="step(1)" class="px-2 border border-white/40 rounded">→</button>
+  <span class="opacity-50">|</span>
+  <label>Viewing as <select id="as-user" onchange="S.userId=+this.value;render()" class="bg-black border border-white/40 rounded ml-1"></select></label>
+  <span class="opacity-50">|</span>
+  <button onclick="toggle('state')" class="px-2 border border-white/40 rounded">history log</button>
+  <button onclick="toggle('tryit')" class="px-2 border border-white/40 rounded">try this</button>
+  <button onclick="reset()" class="px-2 border border-white/40 rounded">reset</button>
+</div>
+
+<div id="tryit" class="fixed bottom-12 right-3 z-50 bg-black/90 text-white text-xs p-4 rounded w-80 leading-relaxed">
+  <b class="text-yellow-300">Try this</b>
+  <ol class="list-decimal ml-4 mt-2 space-y-1">
+    <li>As Dana, move <b>Jane Smith</b> one step (Applied → Screening). No note needed.</li>
+    <li>Move <b>Leo Park</b> Applied → Interview. That's a skip, so a note is required.</li>
+    <li>Move <b>Aiko Tanaka</b> back to Screening. That's backward, so a note is required.</li>
+    <li>Expand <b>Rejected</b> and reopen <b>Ella Ford</b>. A note is required.</li>
+    <li>Switch to <b>Rita (Recruiter)</b>: on Backend Developer she <i>can't</i> move anyone to Offer. Switch the opening to <b>Support Specialist</b>, where she's the designated authority, and she can.</li>
+    <li>Switch to <b>Ken (Interviewer)</b>: nothing can be moved.</li>
+    <li>Try moving <b>Owen Price</b> (Hired). Hired is final.</li>
+  </ol>
+  <button onclick="toggle('tryit')" class="mt-2 underline">hide</button>
+</div>
+<div id="state" class="hidden fixed bottom-12 left-3 z-50 bg-black/90 text-green-300 text-xs p-3 rounded max-h-[60vh] overflow-auto w-[26rem] font-mono"></div>
+
+<script>
+/* ================= Shared rules (pure; same for every variant) ================= */
+const STAGES = [
+  { key: "applied", label: "Applied" }, { key: "screening", label: "Screening" },
+  { key: "interview", label: "Interview" }, { key: "final_review", label: "Final Review" },
+  { key: "offer", label: "Offer" }, { key: "hired", label: "Hired" },
+  { key: "rejected", label: "Rejected" }, { key: "withdrawn", label: "Withdrawn" },
+];
+const LINE = ["applied", "screening", "interview", "final_review", "offer", "hired"];
+const ACTIVE = ["applied", "screening", "interview", "final_review", "offer"];
+const CLOSED = ["rejected", "withdrawn"];
+const label = k => STAGES.find(s => s.key === k).label;
+
+function moveKind(from, to) {
+  if (CLOSED.includes(to)) return "close";
+  if (CLOSED.includes(from)) return "reopen";
+  const d = LINE.indexOf(to) - LINE.indexOf(from);
+  return d === 1 ? "forward" : d > 1 ? "skip" : "back";
+}
+const requiresNote = (from, to) => ["skip", "back", "reopen"].includes(moveKind(from, to));
+const allowedTransition = (from, to) => {
+  if (from === to || from === "hired") return false;
+  if (to === "hired") return from === "offer";
+  if (CLOSED.includes(from)) return ACTIVE.includes(to);
+  return true; // active -> any active / rejected / withdrawn
+};
+const canMakeOffer = (user, opening) =>
+  user.role === "Admin" || user.role === "Hiring Manager" || opening.authority === user.id;
+
+function canMove(user, app, opening, to) {
+  if (user.role === "Interviewer") return { ok: false, reason: "Interviewers are view-only" };
+  if (app.stage === "hired") return { ok: false, reason: "Hired is final" };
+  if (app.stage === to) return { ok: false, reason: "Already here" };
+  if (to === "hired" && app.stage !== "offer") return { ok: false, reason: "Hired is only reachable from Offer" };
+  if (!allowedTransition(app.stage, to)) return { ok: false, reason: "Reopen to an active stage" };
+  if (["offer", "hired"].includes(to) && !canMakeOffer(user, opening))
+    return { ok: false, reason: "Needs offer permission" };
+  return { ok: true, note: requiresNote(app.stage, to), kind: moveKind(app.stage, to) };
+}
+
+/* ================= Data ================= */
+const USERS = [
+  { id: 1, name: "Dana Lee", role: "Hiring Manager" },
+  { id: 4, name: "Rita Gomez", role: "Recruiter" },
+  { id: 5, name: "Ken Wu", role: "Interviewer" },
+  { id: 6, name: "Alex Admin", role: "Admin" },
+];
+const OPENINGS = [
+  { id: 1, title: "Backend Developer", authority: 1 },
+  { id: 2, title: "Support Specialist", authority: 4 },
+];
+const SEED = [
+  [1, "Jane Smith", "applied", "Indeed"], [1, "Leo Park", "applied", "LinkedIn"],
+  [1, "Mia Cruz", "screening", "Referral"], [1, "Raj Iyer", "screening", "Company website"],
+  [1, "Noor Haddad", "interview", "Indeed"], [1, "Tom Reed", "interview", "Career fair"],
+  [1, "Aiko Tanaka", "final_review", "Referral"], [1, "Marcus Bell", "offer", "LinkedIn"],
+  [1, "Owen Price", "hired", "Indeed"], [1, "Ella Ford", "rejected", "Indeed"],
+  [1, "Sam Lin", "rejected", "LinkedIn"], [1, "Chris Vo", "withdrawn", "Company website"],
+  [2, "Grace Kim", "applied", "Indeed"], [2, "Ivan Petrov", "screening", "Referral"],
+  [2, "Lena Shah", "final_review", "Company website"], [2, "Omar Ali", "offer", "LinkedIn"],
+];
+const fresh = () => {
+  const apps = SEED.map(([opening, name, stage, source], i) => ({ id: i + 1, opening, name, stage, source }));
+  return { apps, log: apps.map(a => ({ app: a.id, from: null, to: a.stage, by: "seed", at: "Oct 1", note: "" })) };
+};
+
+const S = { variant: 1, userId: 1, openingId: 1, expanded: { rejected: false, withdrawn: false },
+            pending: null, history: null, showClosed: false, clock: 0, ...fresh() };
+try { const v = localStorage.getItem("pipeline-variant"); if (v !== null) S.variant = +v; } catch (e) {}
+
+const me = () => USERS.find(u => u.id === S.userId);
+const opening = () => OPENINGS.find(o => o.id === S.openingId);
+const apps = () => S.apps.filter(a => a.opening === S.openingId);
+const appById = id => S.apps.find(a => a.id === id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const lastNote = a => [...S.log].reverse().find(l => l.app === a.id && l.note);
+
+/* ================= Actions ================= */
+function attempt(appId, to) {
+  const a = appById(appId), r = canMove(me(), a, opening(), to);
+  if (!r.ok) { toast(`Can't move ${a.name} to ${label(to)}: ${r.reason}.`, "error"); render(); return; }
+  if (r.note || r.kind === "close") { S.pending = { appId, to, kind: r.kind, required: r.note }; render(); return; }
+  commit(appId, to, "");
+}
+function commit(appId, to, note) {
+  const a = appById(appId);
+  S.clock++;
+  S.log.push({ app: a.id, from: a.stage, to, by: me().name, at: `Oct 19 10:${String(S.clock).padStart(2, "0")}`, note });
+  const from = a.stage; a.stage = to; S.pending = null;
+  if (CLOSED.includes(to)) S.expanded[to] = S.expanded[to]; // keep collapse state
+  toast(`${a.name}: ${label(from)} → ${label(to)}  (would be: hx-post /applications/${a.id}/move/, card swapped)`, "success");
+  render();
+}
+function confirmPending() {
+  const note = document.getElementById("note").value.trim();
+  if (S.pending.required && !note) return;
+  commit(S.pending.appId, S.pending.to, note);
+}
+function cancelPending() { S.pending = null; render(); }
+function toggleCol(k) { S.expanded[k] = !S.expanded[k]; render(); }
+
+/* ================= Shared pieces ================= */
+const header = () => `
+  <div class="navbar bg-base-100 shadow-sm px-4">
+    <div class="flex-1 gap-6"><span class="font-bold text-lg">ATS</span>
+      <ul class="menu menu-horizontal px-0 hidden sm:flex"><li><a>Openings</a></li><li><a>Candidates</a></li><li><a class="active">Pipeline</a></li></ul></div>
+    <div class="text-sm">${me().name} <span class="badge badge-outline badge-sm">${me().role}</span></div>
+  </div>
+  <div class="px-4 sm:px-6 pt-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <label class="text-xs opacity-60">Opening</label>
+      <select class="select select-bordered select-sm block" onchange="S.openingId=+this.value;render()">
+        ${OPENINGS.map(o => `<option value="${o.id}" ${o.id === S.openingId ? "selected" : ""}>${o.title}</option>`).join("")}
+      </select>
+    </div>
+    <div class="text-sm">Designated authority: <b>${USERS.find(u => u.id === opening().authority).name}</b>
+      ${canMakeOffer(me(), opening()) ? '<span class="badge badge-success badge-sm ml-1">you can make offers</span>' : '<span class="badge badge-ghost badge-sm ml-1">you can\'t make offers here</span>'}</div>
+  </div>`;
+const noteIcon = a => lastNote(a) ? `<span class="tooltip" data-tip="${esc(lastNote(a).note)}">📝</span>` : "";
+const sourceBadge = a => `<span class="badge badge-ghost badge-xs">${a.source}</span>`;
+
+function moveMenu(a) {
+  if (me().role === "Interviewer" || a.stage === "hired") return "";
+  const items = STAGES.filter(s => s.key !== a.stage).map(s => {
+    const r = canMove(me(), a, opening(), s.key);
+    if (!r.ok) return `<li class="disabled"><span class="flex justify-between gap-2 opacity-50">${s.label}<span class="text-[10px]">${r.reason}</span></span></li>`;
+    const tag = r.note ? '<span class="badge badge-warning badge-xs">note</span>' : r.kind === "forward" ? '<span class="badge badge-success badge-xs">next</span>' : "";
+    return `<li><a onclick="attempt(${a.id},'${s.key}')" class="flex justify-between">${s.label}${tag}</a></li>`;
+  }).join("");
+  return `<div class="dropdown dropdown-end">
+    <div tabindex="0" role="button" class="btn btn-xs btn-ghost">Move ▾</div>
+    <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-20 w-60 p-2 shadow text-sm">${items}</ul></div>`;
+}
+const card = (a, extra = "", attrs = "") => `
+  <div ${attrs} class="card bg-base-100 shadow-sm border border-base-300 ${a.stage === "hired" ? "border-success" : ""}">
+    <div class="card-body p-3 gap-1">
+      <div class="flex justify-between items-start gap-2">
+        <button class="font-medium text-sm text-left hover:underline" onclick="S.history=${a.id};render()">${a.name}</button>${noteIcon(a)}
+      </div>
+      <div class="flex justify-between items-center">${sourceBadge(a)}${extra}</div>
+    </div>
+  </div>`;
+
+function board(cardFn, colAttrs = () => "") {
+  const list = apps();
+  const col = s => {
+    const items = list.filter(a => a.stage === s.key);
+    const closed = CLOSED.includes(s.key);
+    if (closed && !S.expanded[s.key]) return `
+      <div data-stage="${s.key}" ${colAttrs(s)} class="col shrink-0 w-14 bg-base-300/60 rounded-box p-2 flex flex-col items-center gap-2 cursor-pointer" onclick="toggleCol('${s.key}')">
+        <span class="badge badge-neutral">${items.length}</span><span class="vtext font-semibold text-sm">${s.label} ▸</span>
+      </div>`;
+    return `
+      <div data-stage="${s.key}" ${colAttrs(s)} class="col shrink-0 w-60 ${closed ? "bg-base-300/60" : "bg-base-100/60"} rounded-box p-2 flex flex-col gap-2">
+        <div class="flex justify-between items-center px-1">
+          <span class="font-semibold text-sm">${s.label} <span class="badge badge-sm">${items.length}</span></span>
+          ${closed ? `<button class="btn btn-ghost btn-xs" onclick="toggleCol('${s.key}')">◂ collapse</button>` : ""}
+        </div>
+        ${items.map(cardFn).join("") || `<div class="text-xs opacity-40 text-center py-6 border border-dashed border-base-300 rounded">empty</div>`}
+      </div>`;
+  };
+  return `<div class="flex gap-3 overflow-x-auto p-4 sm:p-6 items-start">${STAGES.map(col).join("")}</div>`;
+}
+
+/* ================= Variant A: drag and drop ================= */
+function variantA() {
+  const draggable = me().role !== "Interviewer";
+  return `${header()}
+    <p class="px-4 sm:px-6 pt-3 text-sm opacity-70">Drag a card onto a column. While dragging:
+      <span class="badge badge-success badge-sm">green</span> = allowed,
+      <span class="badge badge-warning badge-sm">amber</span> = allowed but needs a note,
+      faded = not allowed. Collapsed columns still accept drops.</p>
+    ${board(a => card(a, "", draggable && a.stage !== "hired"
+        ? `draggable="true" ondragstart="dragStart(event, ${a.id})" ondragend="dragEnd()" style="cursor:grab"` : ""),
+      s => `ondragover="dragOver(event,'${s.key}')" ondrop="drop(event,'${s.key}')"`)}`;
+}
+let dragId = null;
+function dragStart(e, id) {
+  dragId = id; e.dataTransfer.effectAllowed = "move";
+  document.querySelectorAll(".col").forEach(c => {
+    const r = canMove(me(), appById(id), opening(), c.dataset.stage);
+    if (c.dataset.stage === appById(id).stage) return;
+    c.classList.add(!r.ok ? "col-no" : r.note ? "col-note" : "col-ok");
+  });
+}
+function dragEnd() { dragId = null; document.querySelectorAll(".col").forEach(c => c.classList.remove("col-ok", "col-note", "col-no")); }
+function dragOver(e, stage) { if (dragId && canMove(me(), appById(dragId), opening(), stage).ok) e.preventDefault(); }
+function drop(e, stage) { e.preventDefault(); const id = dragId; dragEnd(); attempt(id, stage); }
+
+/* ================= Variant B: move menu on each card ================= */
+function variantB() {
+  return `${header()}
+    <p class="px-4 sm:px-6 pt-3 text-sm opacity-70">Use <b>Move ▾</b> on a card. The menu lists every stage: allowed moves are clickable,
+      <span class="badge badge-warning badge-xs">note</span> means a note will be asked for, and greyed-out rows say why not.</p>
+    ${board(a => card(a, moveMenu(a)))}`;
+}
+
+/* ================= Variant C: table ================= */
+function variantC() {
+  const list = apps().filter(a => S.showClosed || !CLOSED.includes(a.stage))
+    .sort((x, y) => STAGES.findIndex(s => s.key === x.stage) - STAGES.findIndex(s => s.key === y.stage));
+  const closedN = apps().filter(a => CLOSED.includes(a.stage)).length;
+  const counts = STAGES.map(s => `<div class="stat px-4 py-2"><div class="stat-title text-xs">${s.label}</div><div class="stat-value text-lg">${apps().filter(a => a.stage === s.key).length}</div></div>`).join("");
+  const select = a => {
+    if (me().role === "Interviewer" || a.stage === "hired") return `<span class="badge">${label(a.stage)}</span>`;
+    return `<select class="select select-bordered select-xs" onchange="attempt(${a.id}, this.value)">
+      ${STAGES.map(s => {
+        if (s.key === a.stage) return `<option value="${s.key}" selected>${s.label}</option>`;
+        const r = canMove(me(), a, opening(), s.key);
+        return `<option value="${s.key}" ${r.ok ? "" : "disabled"}>${s.label}${r.ok ? (r.note ? " (note)" : "") : " (" + r.reason + ")"}</option>`;
+      }).join("")}</select>`;
+  };
+  return `${header()}
+    <div class="p-4 sm:p-6 space-y-3">
+      <div class="stats stats-horizontal shadow-sm bg-base-100 overflow-x-auto w-full">${counts}</div>
+      <label class="label cursor-pointer justify-start gap-2"><input type="checkbox" class="toggle toggle-sm" ${S.showClosed ? "checked" : ""} onchange="S.showClosed=this.checked;render()">
+        <span class="text-sm">Show Rejected / Withdrawn (${closedN})</span></label>
+      <div class="overflow-x-auto bg-base-100 rounded-box shadow">
+        <table class="table table-sm">
+          <thead><tr><th>Candidate</th><th>Source</th><th>Stage</th><th>Last note</th><th></th></tr></thead>
+          <tbody>${list.map(a => `<tr class="hover">
+            <td class="font-medium">${a.name}</td><td>${sourceBadge(a)}</td><td>${select(a)}</td>
+            <td class="text-xs opacity-70 max-w-xs truncate">${lastNote(a) ? esc(lastNote(a).note) : ""}</td>
+            <td><button class="btn btn-ghost btn-xs" onclick="S.history=${a.id};render()">History</button></td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+const VARIANTS = [
+  { key: "A", name: "Board, drag and drop", render: variantA },
+  { key: "B", name: "Board, move menu (your pick)", render: variantB },
+  { key: "C", name: "Table, stage dropdown", render: variantC },
+];
+
+/* ================= Modals ================= */
+function noteModal() {
+  const p = S.pending; if (!p) return "";
+  const a = appById(p.appId);
+  const skipped = p.kind === "skip" ? LINE.slice(LINE.indexOf(a.stage) + 1, LINE.indexOf(p.to)).map(label).join(", ") : "";
+  const why = {
+    skip: `This <b>skips ${skipped}</b>. Explain why it's being expedited.`,
+    back: `This moves <b>backward</b>. Explain why.`,
+    reopen: `This <b>reopens</b> a ${label(a.stage).toLowerCase()} application. Explain why.`,
+    close: `Reason (optional). Useful for reporting why candidates are lost.`,
+  }[p.kind];
+  return `<div class="modal modal-open"><div class="modal-box">
+    <h3 class="font-bold text-lg">Move ${a.name}</h3>
+    <p class="my-2"><span class="badge">${label(a.stage)}</span> → <span class="badge badge-primary">${label(p.to)}</span></p>
+    <p class="text-sm mb-3">${why}</p>
+    <textarea id="note" class="textarea textarea-bordered w-full" rows="3" placeholder="${p.required ? "Required" : "Optional"}"
+      oninput="document.getElementById('confirm').disabled=${p.required}&&!this.value.trim()"></textarea>
+    <div class="modal-action">
+      <button class="btn" onclick="cancelPending()">Cancel</button>
+      <button id="confirm" class="btn btn-primary" ${p.required ? "disabled" : ""} onclick="confirmPending()">Move</button>
+    </div></div></div>`;
+}
+function historyModal() {
+  if (!S.history) return "";
+  const a = appById(S.history);
+  const rows = S.log.filter(l => l.app === a.id).reverse();
+  return `<div class="modal modal-open" onclick="if(event.target===this){S.history=null;render()}"><div class="modal-box">
+    <h3 class="font-bold text-lg mb-1">${a.name}</h3>
+    <p class="text-sm opacity-70 mb-4">${opening().title} · now in <b>${label(a.stage)}</b> · source ${a.source}</p>
+    <ul class="timeline timeline-vertical timeline-compact">
+      ${rows.map((l, i) => `<li>${i ? "<hr>" : ""}<div class="timeline-middle">●</div>
+        <div class="timeline-end mb-4"><div class="text-sm"><b>${l.from ? label(l.from) + " → " : "Created in "}${label(l.to)}</b></div>
+        <div class="text-xs opacity-60">${l.at} · ${l.by}</div>${l.note ? `<div class="text-sm mt-1 italic">"${esc(l.note)}"</div>` : ""}</div>
+        ${i < rows.length - 1 ? "<hr>" : ""}</li>`).join("")}
+    </ul>
+    <div class="modal-action"><button class="btn" onclick="S.history=null;render()">Close</button></div></div></div>`;
+}
+
+/* ================= Render ================= */
+function render() {
+  document.getElementById("app").innerHTML = VARIANTS[S.variant].render();
+  document.getElementById("modal").innerHTML = noteModal() + historyModal();
+  const v = VARIANTS[S.variant];
+  document.getElementById("variant-label").textContent = `${v.key} · ${v.name} (${S.variant + 1}/${VARIANTS.length})`;
+  document.getElementById("as-user").innerHTML = USERS.map(u => `<option value="${u.id}" ${u.id === S.userId ? "selected" : ""}>${u.name} (${u.role})</option>`).join("");
+  const recent = S.log.filter(l => l.by !== "seed").slice(-12).reverse();
+  document.getElementById("state").innerHTML =
+    `<div class="text-yellow-300 mb-1">StageChange log (newest first)</div>` +
+    (recent.length ? recent.map(l => `${l.at}  ${appById(l.app).name}: ${label(l.from)} → ${label(l.to)}  by ${l.by}${l.note ? `<br>&nbsp;&nbsp;note: "${esc(l.note)}"` : ""}`).join("<br>")
+      : "No moves yet.") +
+    `<div class="text-yellow-300 mt-3 mb-1">Current stage (Application.stage)</div>` +
+    apps().map(a => `${a.name.padEnd(12, " ")} ${label(a.stage)}`).join("<br>");
+  if (S.pending) setTimeout(() => document.getElementById("note")?.focus(), 0);
+}
+function step(d) { S.variant = (S.variant + d + VARIANTS.length) % VARIANTS.length; try { localStorage.setItem("pipeline-variant", S.variant); } catch (e) {} render(); }
+function toggle(id) { document.getElementById(id).classList.toggle("hidden"); }
+function reset() { Object.assign(S, fresh(), { pending: null, history: null }); render(); }
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.innerHTML = `<div class="alert alert-${kind} text-sm max-w-md">${esc(msg)}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.innerHTML = "", 3000);
+}
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName) || S.pending) return;
+  if (e.key === "ArrowLeft") step(-1);
+  if (e.key === "ArrowRight") step(1);
+});
+render();
+</script>
+</body>
+</html>

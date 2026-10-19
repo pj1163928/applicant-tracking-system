@@ -1,0 +1,290 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — not production code.
+  Question: Three structurally different Openings screens for option C (hybrid ownership):
+  each opening has a hiring-manager owner, "mine" is the default view, but access is never restricted.
+  All state is in memory. Nothing is saved.
+-->
+<html lang="en" data-theme="corporate">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Openings Ownership Prototype</title>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<style>
+  body { padding-bottom: 5rem; }
+  #proto-bar { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body class="bg-base-200 min-h-screen">
+
+<div id="app"></div>
+
+<!-- Prototype controls: deliberately NOT styled like the app -->
+<div id="proto-bar" class="fixed bottom-0 inset-x-0 z-50 bg-black text-white text-xs flex flex-wrap items-center gap-3 px-3 py-2">
+  <span class="text-yellow-300">PROTOTYPE</span>
+  <button onclick="step(-1)" class="px-2 border border-white/40 rounded">←</button>
+  <span id="variant-label"></span>
+  <button onclick="step(1)" class="px-2 border border-white/40 rounded">→</button>
+  <span class="opacity-50">|</span>
+  <label>Viewing as
+    <select id="as-user" onchange="setUser(this.value)" class="bg-black border border-white/40 rounded ml-1"></select>
+  </label>
+  <span class="opacity-50">|</span>
+  <button onclick="toggleState()" class="px-2 border border-white/40 rounded">state</button>
+  <button onclick="resetData()" class="px-2 border border-white/40 rounded">reset</button>
+</div>
+<pre id="state" class="hidden fixed bottom-12 left-3 z-50 bg-black/90 text-green-300 text-xs p-3 rounded max-h-[60vh] overflow-auto w-[22rem]"></pre>
+<div id="toast" class="toast toast-top toast-end z-50"></div>
+
+<script>
+const USERS = [
+  { id: 1, name: "Dana Lee",   role: "Hiring Manager" },
+  { id: 2, name: "Sam Ortiz",  role: "Hiring Manager" },
+  { id: 3, name: "Priya Shah", role: "Hiring Manager" },
+  { id: 4, name: "Rita Gomez", role: "Recruiter" },
+  { id: 5, name: "Ken Wu",     role: "Interviewer" },
+];
+const SEED = [
+  { id: 1, title: "Backend Developer",   dept: "Engineering", status: "open",   owner: 1, applicants: 12, updated: "Oct 17", skills: ["Python", "Django", "SQL"] },
+  { id: 2, title: "QA Analyst",          dept: "Engineering", status: "open",   owner: 1, applicants: 4,  updated: "Oct 15", skills: ["Pytest", "Selenium"] },
+  { id: 3, title: "Data Engineer",       dept: "Data",        status: "open",   owner: 2, applicants: 7,  updated: "Oct 16", skills: ["Python", "SQL", "Airflow"] },
+  { id: 4, title: "Product Designer",    dept: "Design",      status: "open",   owner: 3, applicants: 15, updated: "Oct 18", skills: ["Figma", "Research"] },
+  { id: 5, title: "UX Researcher",       dept: "Design",      status: "closed", owner: 3, applicants: 9,  updated: "Sep 30", skills: ["Research"] },
+  { id: 6, title: "Support Specialist",  dept: "Operations",  status: "open",   owner: null, applicants: 3, updated: "Oct 12", skills: ["Communication"] },
+  { id: 7, title: "DevOps Engineer",     dept: "Engineering", status: "closed", owner: 2, applicants: 5,  updated: "Aug 22", skills: ["Docker", "Linux"] },
+];
+
+const S = {
+  variant: 0,
+  userId: 1,
+  filter: null,          // null = role default
+  status: "open",
+  selected: 1,           // variant C
+  editing: null,         // variant A
+  openings: structuredClone(SEED),
+};
+try { S.variant = +localStorage.getItem("proto-variant") || 0; } catch (e) {}
+
+const me = () => USERS.find(u => u.id === S.userId);
+const isHM = () => me().role === "Hiring Manager";
+const managers = () => USERS.filter(u => u.role === "Hiring Manager");
+const userName = id => id ? USERS.find(u => u.id === id).name : null;
+const filter = () => S.filter ?? (isHM() ? "mine" : "all");
+const byStatus = list => S.status === "any" ? list : list.filter(o => o.status === S.status);
+function visible() {
+  const f = filter();
+  let list = byStatus(S.openings);
+  if (f === "mine") list = list.filter(o => o.owner === S.userId);
+  if (f === "unassigned") list = list.filter(o => o.owner === null);
+  return list;
+}
+const count = f => byStatus(S.openings).filter(o =>
+  f === "mine" ? o.owner === S.userId : f === "unassigned" ? o.owner === null : true).length;
+
+const initials = n => n.split(" ").map(p => p[0]).join("");
+const statusBadge = s => s === "open"
+  ? `<span class="badge badge-success badge-sm gap-1">● Open</span>`
+  : `<span class="badge badge-ghost badge-sm gap-1">○ Closed</span>`;
+const ownerChip = id => id
+  ? `<span class="inline-flex items-center gap-2"><span class="avatar placeholder"><span class="bg-neutral text-neutral-content rounded-full w-6 text-[10px]">${initials(userName(id))}</span></span>${userName(id)}${id === S.userId ? ' <span class="badge badge-primary badge-xs">you</span>' : ""}</span>`
+  : `<span class="badge badge-warning badge-sm">Unassigned</span>`;
+const ownerSelect = (o, cls = "select-sm") => `
+  <select class="select select-bordered ${cls}" onchange="setOwner(${o.id}, this.value)">
+    <option value="" ${o.owner === null ? "selected" : ""}>— Unassigned —</option>
+    ${managers().map(u => `<option value="${u.id}" ${o.owner === u.id ? "selected" : ""}>${u.name}</option>`).join("")}
+  </select>`;
+const navbar = () => `
+  <div class="navbar bg-base-100 shadow-sm px-4">
+    <div class="flex-1 gap-6">
+      <span class="font-bold text-lg">ATS</span>
+      <ul class="menu menu-horizontal px-0 hidden sm:flex">
+        <li><a class="active">Openings</a></li><li><a>Candidates</a></li><li><a>Pipeline</a></li>
+      </ul>
+    </div>
+    <div class="text-sm">${me().name} <span class="badge badge-outline badge-sm">${me().role}</span></div>
+  </div>`;
+const statusSelect = () => `
+  <select class="select select-bordered select-sm" onchange="S.status=this.value;render()">
+    ${["open", "closed", "any"].map(s => `<option value="${s}" ${S.status === s ? "selected" : ""}>Status: ${s}</option>`).join("")}
+  </select>`;
+
+/* ---------- Variant A: dense table + tabs + edit modal ---------- */
+function variantA() {
+  const rows = visible();
+  const tab = (f, label) => `<a class="tab ${filter() === f ? "tab-active" : ""}" onclick="setFilter('${f}')">${label} <span class="badge badge-sm ml-2">${count(f)}</span></a>`;
+  const ed = S.openings.find(o => o.id === S.editing);
+  return `${navbar()}
+  <main class="max-w-6xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <h1 class="text-2xl font-bold">Openings</h1>
+      <button class="btn btn-primary btn-sm">+ New opening</button>
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div role="tablist" class="tabs tabs-boxed bg-base-100">
+        ${isHM() ? tab("mine", "My openings") : ""}${tab("all", "All")}${tab("unassigned", "Unassigned")}
+      </div>
+      ${statusSelect()}
+    </div>
+    <div class="overflow-x-auto bg-base-100 rounded-box shadow">
+      <table class="table table-sm">
+        <thead><tr><th>Title</th><th>Department</th><th>Hiring manager</th><th>Status</th><th class="text-right">Applicants</th><th>Updated</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map(o => `<tr class="hover">
+            <td class="font-medium">${o.title}</td><td>${o.dept}</td><td>${ownerChip(o.owner)}</td>
+            <td>${statusBadge(o.status)}</td><td class="text-right">${o.applicants}</td><td>${o.updated}</td>
+            <td class="text-right"><button class="btn btn-ghost btn-xs" onclick="S.editing=${o.id};render()">Edit</button></td>
+          </tr>`).join("") || `<tr><td colspan="7" class="text-center py-8 opacity-60">No openings in this view.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </main>
+  ${ed ? `<div class="modal modal-open"><div class="modal-box">
+    <h3 class="font-bold text-lg mb-4">Edit opening</h3>
+    <label class="form-control mb-3"><span class="label-text mb-1">Title</span><input class="input input-bordered" value="${ed.title}" disabled></label>
+    <label class="form-control mb-3"><span class="label-text mb-1">Hiring manager</span>${ownerSelect(ed, "")}
+      <span class="label-text-alt mt-1 opacity-70">Only users in the "Hiring Manager" group are listed. Ownership is for filtering only. It doesn't restrict access.</span></label>
+    <div class="modal-action"><button class="btn" onclick="S.editing=null;render()">Done</button></div>
+  </div></div>` : ""}`;
+}
+
+/* ---------- Variant B: grouped card board, no tabs ---------- */
+function variantB() {
+  const list = byStatus(S.openings);
+  const card = o => `
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-4 gap-2">
+        <div class="flex justify-between items-start gap-2"><h3 class="card-title text-base">${o.title}</h3>${statusBadge(o.status)}</div>
+        <p class="text-sm opacity-70">${o.dept} · ${o.applicants} applicants · updated ${o.updated}</p>
+        <div class="flex flex-wrap gap-1">${o.skills.map(s => `<span class="badge badge-outline badge-sm">${s}</span>`).join("")}</div>
+        <div class="card-actions justify-between items-center mt-2">
+          <span class="text-xs opacity-60">Owner</span>${ownerSelect(o, "select-xs")}
+        </div>
+      </div>
+    </div>`;
+  const grid = items => `<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(card).join("")}</div>`;
+  const mine = list.filter(o => o.owner === S.userId);
+  const unassigned = list.filter(o => o.owner === null);
+  const others = managers().filter(u => u.id !== S.userId)
+    .map(u => ({ u, items: list.filter(o => o.owner === u.id) })).filter(g => g.items.length);
+  return `${navbar()}
+  <main class="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Openings</h1>
+      <div class="flex gap-2">${statusSelect()}<button class="btn btn-primary btn-sm">+ New opening</button></div>
+    </div>
+    ${unassigned.length ? `<div role="alert" class="alert alert-warning">
+      <span><b>${unassigned.length}</b> opening${unassigned.length > 1 ? "s have" : " has"} no hiring manager. Pick an owner below.</span></div>
+      ${grid(unassigned)}` : ""}
+    ${isHM() ? `<section><h2 class="text-lg font-semibold mb-3">Your openings <span class="badge">${mine.length}</span></h2>
+      ${mine.length ? grid(mine) : `<p class="opacity-60 text-sm">You don't own any ${S.status !== "any" ? S.status : ""} openings.</p>`}</section>` : ""}
+    <section>
+      <h2 class="text-lg font-semibold mb-3">${isHM() ? "Other hiring managers" : "By hiring manager"}</h2>
+      <div class="space-y-2">
+        ${others.map(g => `<div class="collapse collapse-arrow bg-base-100 shadow-sm">
+          <input type="checkbox" ${isHM() ? "" : "checked"}>
+          <div class="collapse-title font-medium flex items-center gap-2">${ownerChip(g.u.id)} <span class="badge badge-sm">${g.items.length}</span></div>
+          <div class="collapse-content">${grid(g.items)}</div>
+        </div>`).join("")}
+      </div>
+    </section>
+  </main>`;
+}
+
+/* ---------- Variant C: list / detail split pane ---------- */
+function variantC() {
+  const rows = visible();
+  if (!rows.find(o => o.id === S.selected)) S.selected = rows[0]?.id ?? null;
+  const sel = S.openings.find(o => o.id === S.selected);
+  const chip = (f, label) => `<button class="btn btn-xs ${filter() === f ? "btn-primary" : "btn-ghost"}" onclick="setFilter('${f}')">${label} (${count(f)})</button>`;
+  return `${navbar()}
+  <main class="max-w-6xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-col md:flex-row gap-4">
+      <aside class="md:w-80 shrink-0 bg-base-100 rounded-box shadow">
+        <div class="p-3 border-b border-base-200 space-y-2">
+          <input class="input input-bordered input-sm w-full" placeholder="Search openings…">
+          <div class="flex flex-wrap gap-1">${isHM() ? chip("mine", "Mine") : ""}${chip("all", "All")}${chip("unassigned", "Unassigned")}</div>
+          ${statusSelect()}
+        </div>
+        <ul class="menu p-2">
+          ${rows.map(o => `<li><a class="${o.id === S.selected ? "active" : ""} flex flex-col items-start gap-0" onclick="S.selected=${o.id};render()">
+            <span class="font-medium">${o.title}</span>
+            <span class="text-xs opacity-70">${o.owner ? userName(o.owner) : "Unassigned"} · ${o.applicants} applicants</span></a></li>`).join("")
+            || `<li class="opacity-60 p-4 text-sm">No openings in this view.</li>`}
+        </ul>
+      </aside>
+      <section class="flex-1 bg-base-100 rounded-box shadow p-6 min-h-[24rem]">
+        ${sel ? `
+          ${isHM() && sel.owner !== S.userId ? `<div role="alert" class="alert alert-info mb-4 text-sm">
+            <span>This opening belongs to <b>${sel.owner ? userName(sel.owner) : "nobody yet"}</b>. You can still view and work on it.</span></div>` : ""}
+          <div class="flex flex-wrap justify-between items-start gap-3">
+            <div><h1 class="text-2xl font-bold">${sel.title}</h1><p class="opacity-70">${sel.dept}</p></div>
+            <div class="flex gap-2">${statusBadge(sel.status)}<button class="btn btn-sm">Edit</button></div>
+          </div>
+          <div class="stats stats-vertical sm:stats-horizontal shadow-sm my-6 w-full">
+            <div class="stat"><div class="stat-title">Applicants</div><div class="stat-value text-2xl">${sel.applicants}</div></div>
+            <div class="stat"><div class="stat-title">Last update</div><div class="stat-value text-2xl">${sel.updated}</div></div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-6">
+            <div><h3 class="font-semibold mb-2">Hiring manager</h3>
+              <div class="flex flex-col gap-2">${ownerChip(sel.owner)}${ownerSelect(sel)}</div></div>
+            <div><h3 class="font-semibold mb-2">Skills</h3>
+              <div class="flex flex-wrap gap-1">${sel.skills.map(s => `<span class="badge badge-outline">${s}</span>`).join("")}</div></div>
+          </div>` : `<p class="opacity-60">Select an opening.</p>`}
+      </section>
+    </div>
+  </main>`;
+}
+
+const VARIANTS = [
+  { key: "A", name: "Dense table + tabs", render: variantA },
+  { key: "B", name: "Grouped card board", render: variantB },
+  { key: "C", name: "List / detail split", render: variantC },
+];
+
+function render() {
+  document.getElementById("app").innerHTML = VARIANTS[S.variant].render();
+  const v = VARIANTS[S.variant];
+  document.getElementById("variant-label").textContent = `${v.key} · ${v.name} (${S.variant + 1}/${VARIANTS.length})`;
+  document.getElementById("as-user").innerHTML = USERS.map(u =>
+    `<option value="${u.id}" ${u.id === S.userId ? "selected" : ""}>${u.name} (${u.role})</option>`).join("");
+  document.getElementById("state").textContent = JSON.stringify({
+    variant: v.key,
+    viewingAs: `${me().name} (${me().role})`,
+    filter: filter() + (S.filter === null ? " (role default)" : ""),
+    status: S.status,
+    accessRule: "unrestricted (option C): owner only drives filters and labels",
+    visibleIds: visible().map(o => o.id),
+    owners: Object.fromEntries(S.openings.map(o => [o.title, userName(o.owner)])),
+  }, null, 2);
+}
+function step(d) {
+  S.variant = (S.variant + d + VARIANTS.length) % VARIANTS.length;
+  try { localStorage.setItem("proto-variant", S.variant); } catch (e) {}
+  render();
+}
+function setUser(id) { S.userId = +id; S.filter = null; render(); }
+function setFilter(f) { S.filter = f; render(); }
+function setOwner(id, uid) {
+  const o = S.openings.find(o => o.id === id);
+  o.owner = uid ? +uid : null;
+  toast(`Owner of "${o.title}" → ${userName(o.owner) ?? "Unassigned"}  (would be: HTMX POST /openings/${id}/owner/)`);
+  render();
+}
+function resetData() { S.openings = structuredClone(SEED); S.filter = null; S.editing = null; render(); }
+function toggleState() { document.getElementById("state").classList.toggle("hidden"); }
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.innerHTML = `<div class="alert alert-success text-sm">${msg}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.innerHTML = "", 2500);
+}
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (e.key === "ArrowLeft") step(-1);
+  if (e.key === "ArrowRight") step(1);
+});
+render();
+</script>
+</body>
+</html>

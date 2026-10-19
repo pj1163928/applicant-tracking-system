@@ -1,0 +1,286 @@
+<!doctype html>
+<!-- THROWAWAY PROTOTYPE — not production code. In-memory only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candidate Source Rules</title>
+<style>
+  :root { --accent: #2563eb; --accent-soft: #dbeafe; --bad: #b91c1c; --bad-soft: #fee2e2; --ok: #15803d; --ok-soft: #dcfce7;
+          --ink: #1f2937; --muted: #6b7280; --line: #e5e7eb; --bg: #f9fafb; --card: #fff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 24px; } h2 { font-size: 16px; margin: 0 0 12px; }
+  .lead { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  .grid { display: grid; gap: 18px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 380px 1fr; } }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  .err { color: var(--bad); font-size: 12px; margin-top: 3px; }
+  .banner { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; }
+  .banner.ok { background: var(--ok-soft); color: var(--ok); } .banner.bad { background: var(--bad-soft); color: var(--bad); }
+  .banner.info { background: var(--accent-soft); color: #1e3a8a; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  tr.changed td { background: #fef9c3; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: #1e3a8a; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .counts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .count { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 110px; cursor: pointer; background: #fff; }
+  .count.active { border-color: var(--accent); background: var(--accent-soft); }
+  .count b { display: block; font-size: 20px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .steps { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .steps button.done { text-decoration: line-through; color: var(--muted); }
+  .steps button.next { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  pre { background: #111827; color: #e5e7eb; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 0; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Candidate source rules</h1>
+  <p class="lead">With option A, every candidate gets <b>one source from a fixed list of four</b> (Company website, Job board,
+    Referral, Other) and an <b>optional free-text detail</b> such as "Indeed" or "referred by Dana Lee". The source belongs to the
+    <b>candidate</b>, not to each application. Use the form or the guided scenarios below to see what gets stored, what gets
+    rejected, and where this approach falls short.</p>
+
+  <div class="card">
+    <h2>Guided scenarios</h2>
+    <div class="tabs" id="tabs"></div>
+    <p id="scenario-desc" class="muted"></p>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Add candidate</h2>
+        <div id="form-msg"></div>
+        <div class="row2">
+          <div><label>First name</label><input id="f-first"><div class="err" id="e-first_name"></div></div>
+          <div><label>Last name</label><input id="f-last"><div class="err" id="e-last_name"></div></div>
+        </div>
+        <label>Email</label><input id="f-email"><div class="err" id="e-email"></div>
+        <label>Source</label>
+        <select id="f-source" onchange="updateHint()"></select>
+        <div class="err" id="e-source"></div>
+        <label>Source detail <span class="muted">(optional)</span></label>
+        <input id="f-detail"><div class="hint" id="detail-hint"></div><div class="err" id="e-source_detail"></div>
+        <div style="margin-top:14px; display:flex; gap:8px;">
+          <button class="primary" onclick="submitForm()">Add candidate</button>
+          <button onclick="clearForm()">Clear</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>What this becomes in Django</h2>
+<pre>class Candidate(models.Model):
+    class Source(models.TextChoices):
+        WEBSITE   = "website",   "Company website"
+        JOB_BOARD = "job_board", "Job board"
+        REFERRAL  = "referral",  "Referral"
+        OTHER     = "other",     "Other"
+
+    first_name    = models.CharField(max_length=100)
+    last_name     = models.CharField(max_length=100)
+    email         = models.EmailField(unique=True)
+    source        = models.CharField(max_length=20,
+                        choices=Source.choices)
+    source_detail = models.CharField(max_length=100,
+                        blank=True)</pre>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Candidates by source <span class="muted" style="font-weight:400">(click to filter)</span></h2>
+        <div class="counts" id="counts"></div>
+      </div>
+      <div class="card">
+        <h2>What's stored</h2>
+        <div id="last"></div>
+        <div class="scroll"><table>
+          <thead><tr><th>Name</th><th>Email</th><th>Source<br><span style="text-transform:none">(shown → stored)</span></th><th>Source detail</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ===== Pure logic module: no DOM in here ===== */
+const Rules = (() => {
+  const SOURCES = [
+    { value: "website",   label: "Company website", hint: "Optional, e.g. \"careers page\" or \"blog post\"" },
+    { value: "job_board", label: "Job board",       hint: "Optional, e.g. \"Indeed\", \"LinkedIn\"" },
+    { value: "referral",  label: "Referral",        hint: "Optional, e.g. \"referred by Dana Lee\"" },
+    { value: "other",     label: "Other",           hint: "Optional, e.g. \"career fair\"" },
+  ];
+  const label = v => SOURCES.find(s => s.value === v)?.label ?? v;
+  const normalizeEmail = e => e.trim().toLowerCase();
+
+  function validate(input, candidates, ignoreId = null) {
+    const errors = {};
+    if (!input.first_name.trim()) errors.first_name = "This field is required.";
+    if (!input.last_name.trim()) errors.last_name = "This field is required.";
+    const email = normalizeEmail(input.email);
+    if (!email) errors.email = "This field is required.";
+    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = "Enter a valid email address.";
+    else if (candidates.some(c => c.email === email && c.id !== ignoreId))
+      errors.email = "Candidate with this Email already exists.";
+    if (!input.source) errors.source = "This field is required.";
+    else if (!SOURCES.some(s => s.value === input.source))
+      errors.source = `Select a valid choice. "${input.source}" is not one of the available choices.`;
+    if (input.source_detail.length > 100) errors.source_detail = "Ensure this value has at most 100 characters.";
+    return errors;
+  }
+
+  function addCandidate(state, input) {
+    const errors = validate(input, state.candidates);
+    if (Object.keys(errors).length) return { ...state, last: { ok: false, errors, input } };
+    const c = {
+      id: state.nextId,
+      first_name: input.first_name.trim(), last_name: input.last_name.trim(),
+      email: normalizeEmail(input.email),
+      source: input.source, source_detail: input.source_detail.trim(),
+    };
+    return { ...state, candidates: [...state.candidates, c], nextId: state.nextId + 1,
+             last: { ok: true, msg: `Saved ${c.first_name} ${c.last_name}.`, changedId: c.id } };
+  }
+
+  function changeSource(state, id, source, source_detail) {
+    const c = state.candidates.find(c => c.id === id);
+    const input = { ...c, source, source_detail };
+    const errors = validate(input, state.candidates, id);
+    if (Object.keys(errors).length) return { ...state, last: { ok: false, errors, input } };
+    const before = `${label(c.source)}${c.source_detail ? " (" + c.source_detail + ")" : ""}`;
+    return { ...state,
+      candidates: state.candidates.map(x => x.id === id ? { ...x, source, source_detail: source_detail.trim() } : x),
+      last: { ok: true, changedId: id,
+        msg: `Changed ${c.first_name}'s source. The old value "${before}" is gone, because the model keeps only one source per candidate.` } };
+  }
+
+  const countBySource = cands => SOURCES.map(s => ({ ...s, n: cands.filter(c => c.source === s.value).length }));
+  const filterBySource = (cands, v) => v ? cands.filter(c => c.source === v) : cands;
+  const detailVariants = (cands, v) => [...new Set(filterBySource(cands, v).map(c => c.source_detail || "(blank)"))];
+
+  const initial = () => ({ candidates: [
+      { id: 1, first_name: "Marcus", last_name: "Bell", email: "marcus.bell@example.com", source: "website", source_detail: "careers page" },
+      { id: 2, first_name: "Aiko", last_name: "Tanaka", email: "aiko.t@example.com", source: "referral", source_detail: "referred by Dana Lee" },
+    ], nextId: 3, filter: null, last: null });
+
+  return { SOURCES, label, validate, addCandidate, changeSource, countBySource, filterBySource, detailVariants, initial };
+})();
+
+/* ===== Thin page shell ===== */
+let state = Rules.initial();
+const $ = id => document.getElementById(id);
+const blank = { first_name: "", last_name: "", email: "", source: "", source_detail: "" };
+
+function readForm() {
+  return { first_name: $("f-first").value, last_name: $("f-last").value, email: $("f-email").value,
+           source: $("f-source").value, source_detail: $("f-detail").value };
+}
+function fillForm(v) {
+  $("f-first").value = v.first_name; $("f-last").value = v.last_name; $("f-email").value = v.email;
+  if (![...$("f-source").options].some(o => o.value === v.source)) {
+    const o = new Option(`${v.source} (not in the list: tampered form)`, v.source); $("f-source").add(o);
+  }
+  $("f-source").value = v.source; $("f-detail").value = v.source_detail; updateHint();
+}
+function clearForm() { fillForm(blank); state = { ...state, last: null }; render(); }
+function updateHint() {
+  const s = Rules.SOURCES.find(s => s.value === $("f-source").value);
+  $("detail-hint").textContent = s ? s.hint : "Pick a source first.";
+}
+function submitForm() { state = Rules.addCandidate(state, readForm()); if (state.last.ok) fillForm(blank); render(); }
+function editSource(id) {
+  const c = state.candidates.find(c => c.id === id);
+  const opts = Rules.SOURCES.map((s, i) => `${i + 1} = ${s.label}`).join("\n");
+  const pick = prompt(`New source for ${c.first_name}:\n${opts}`, "3");
+  const s = Rules.SOURCES[+pick - 1]; if (!s) return;
+  const detail = prompt("Source detail (optional):", "") ?? "";
+  state = Rules.changeSource(state, id, s.value, detail); render();
+}
+function setFilter(v) { state = { ...state, filter: state.filter === v ? null : v }; render(); }
+
+function render() {
+  const cur = $("f-source").value;
+  $("f-source").innerHTML = `<option value="">— Select —</option>` +
+    Rules.SOURCES.map(s => `<option value="${s.value}">${s.label}</option>`).join("") +
+    [...$("f-source").options].filter(o => o.value && !Rules.SOURCES.some(s => s.value === o.value))
+      .map(o => o.outerHTML).join("");
+  $("f-source").value = state.last && !state.last.ok ? state.last.input.source : cur;
+  updateHint();
+
+  ["first_name", "last_name", "email", "source", "source_detail"].forEach(k =>
+    $("e-" + k).textContent = state.last && !state.last.ok ? (state.last.errors[k] || "") : "");
+  $("form-msg").innerHTML = !state.last ? "" : state.last.ok
+    ? `<div class="banner ok">✓ ${state.last.msg}</div>`
+    : `<div class="banner bad">✗ Not saved. Fix the errors below.</div>`;
+
+  $("counts").innerHTML = `<div class="count ${state.filter ? "" : "active"}" onclick="setFilter(null)"><b>${state.candidates.length}</b>All</div>` +
+    Rules.countBySource(state.candidates).map(s =>
+      `<div class="count ${state.filter === s.value ? "active" : ""}" onclick="setFilter('${s.value}')"><b>${s.n}</b>${s.label}</div>`).join("");
+
+  const rows = Rules.filterBySource(state.candidates, state.filter);
+  const variants = state.filter ? Rules.detailVariants(state.candidates, state.filter) : null;
+  $("last").innerHTML = (state.last?.ok ? `<div class="banner ok">${state.last.msg}</div>` : "") +
+    (variants ? `<div class="banner info">Filtered to <b>${Rules.label(state.filter)}</b>. Different detail values typed here: ${variants.map(v => `<code>${v}</code>`).join(" ")}</div>` : "");
+  $("rows").innerHTML = rows.map(c => `
+    <tr class="${state.last?.changedId === c.id ? "changed" : ""}">
+      <td>${c.first_name} ${c.last_name}</td><td>${c.email}</td>
+      <td><span class="pill">${Rules.label(c.source)}</span><br><code>${c.source}</code></td>
+      <td>${c.source_detail ? c.source_detail : '<span class="muted">(blank)</span>'}</td>
+      <td><button onclick="editSource(${c.id})">Change source</button></td>
+    </tr>`).join("") || `<tr><td colspan="5" class="muted">No candidates.</td></tr>`;
+  renderScenario();
+}
+
+/* ===== Guided scenarios ===== */
+const add = v => () => { fillForm({ ...blank, ...v }); state = Rules.addCandidate(state, readForm()); if (state.last.ok) fillForm(blank); };
+const SCENARIOS = [
+  { name: "1. Happy path", desc: "A recruiter adds a candidate who found the job on Indeed. Watch the table: the dropdown shows \"Job board\", the database stores the short code job_board, and \"Indeed\" goes in the detail.",
+    steps: [["Add Jane Smith, Job board, \"Indeed\"", add({ first_name: "Jane", last_name: "Smith", email: "jane.smith@example.com", source: "job_board", source_detail: "Indeed" })],
+            ["Filter to Job board", () => { state = { ...state, filter: "job_board" }; }]] },
+  { name: "2. Same person, different case", desc: "Jane gets entered again from a referral, with her email in capitals. Because email is unique and stored lowercased (Question 4), the second record is blocked.",
+    steps: [["Add Jane Smith, Job board", add({ first_name: "Jane", last_name: "Smith", email: "jane.smith@example.com", source: "job_board", source_detail: "Indeed" })],
+            ["Add JANE.SMITH@Example.com as a Referral", add({ first_name: "Jane", last_name: "Smith", email: "JANE.SMITH@Example.com", source: "referral", source_detail: "referred by Sam Ortiz" })]] },
+  { name: "3. Messy free text", desc: "Three recruiters each type the same job board differently. The category count is still correct (3 Job board), but the detail column has three spellings, so \"how many came from Indeed?\" can't be answered reliably. This is what option A gives up.",
+    steps: [["Add Leo, \"Indeed\"", add({ first_name: "Leo", last_name: "Park", email: "leo@example.com", source: "job_board", source_detail: "Indeed" })],
+            ["Add Mia, \"indeed.com\"", add({ first_name: "Mia", last_name: "Cruz", email: "mia@example.com", source: "job_board", source_detail: "indeed.com" })],
+            ["Add Raj, \"Indeed Jobs\"", add({ first_name: "Raj", last_name: "Iyer", email: "raj@example.com", source: "job_board", source_detail: "Indeed Jobs" })],
+            ["Filter to Job board", () => { state = { ...state, filter: "job_board" }; }]] },
+  { name: "4. \"Other\" with no detail", desc: "The detail is optional for every source, so \"Other\" with nothing typed is allowed. Is that OK, or should the detail be required when Other is chosen?",
+    steps: [["Add Noor, Other, detail left blank", add({ first_name: "Noor", last_name: "Haddad", email: "noor@example.com", source: "other", source_detail: "" })]] },
+  { name: "5. Value not in the list", desc: "Someone edits the page's HTML (or a future bug sends a bad value) to submit \"linkedin\" as the source. Django's choices validation rejects anything outside the four values.",
+    steps: [["Submit source = \"linkedin\"", add({ first_name: "Tom", last_name: "Reed", email: "tom@example.com", source: "linkedin", source_detail: "" })]] },
+  { name: "6. Source per candidate, not per application", desc: "Aiko was referred by Dana for job #1. Later she applies to job #2 after seeing it on LinkedIn. There's only one source field, so recording the new channel means overwriting the referral. Watch the message.",
+    steps: [["Aiko applies to job #2 via LinkedIn: change her source to Job board", () => { state = Rules.changeSource(state, 2, "job_board", "LinkedIn"); }]] },
+];
+let active = 0, stepIdx = 0;
+function startScenario(i) { active = i; stepIdx = 0; state = Rules.initial(); fillForm(blank); render(); }
+function runStep(i) { if (i !== stepIdx) return; SCENARIOS[active].steps[i][1](); stepIdx++; render(); }
+function renderScenario() {
+  $("tabs").innerHTML = SCENARIOS.map((s, i) => `<button class="${i === active ? "active" : ""}" onclick="startScenario(${i})">${s.name}</button>`).join("");
+  const sc = SCENARIOS[active];
+  $("scenario-desc").textContent = sc.desc;
+  $("steps").innerHTML = sc.steps.map(([lbl], i) =>
+    `<button class="${i < stepIdx ? "done" : i === stepIdx ? "next" : ""}" ${i !== stepIdx ? "disabled" : ""} onclick="runStep(${i})">${i < stepIdx ? "✓" : i + 1 + "."} ${lbl}</button>`).join("") +
+    (stepIdx >= sc.steps.length ? `<span class="muted">Done. Pick another tab, or try the form yourself.</span>` : "");
+}
+startScenario(0);
+</script>
+</body>
+</html>
