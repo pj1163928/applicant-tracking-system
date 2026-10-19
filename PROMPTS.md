@@ -28,6 +28,19 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — /to-prd and /prd-to-plan: PRD and 14-phase plan with TDD candidates
+
+### Prompts
+1. `@HANDOFF.md /to-prd`
+2. Ok the PRD looks good now move to planning using /prd-to-plan then write the conversation log to PROMPTS.md as well as any message here-after
+3. Alright this plan looks good, another thing I would like to settle is phases that would require TDD using the /tdd skill can you include which parts of the plan may require TDD
+
+### Summary
+- **Outcome:** Wrote `prd/applicant-tracking-system.md` from HANDOFF.md: 83 user stories, implementation decisions, out of scope, and open questions. Ran `/prd-to-plan` and wrote `plans/applicant-tracking-system.md`: architectural decisions (5 Django apps: accounts, candidates, openings, applications, notifications; namespaced pk-based URLs; Groups-based auth; deep modules; a `seed` command) and 14 tracer-bullet phases with acceptance criteria. At my request each phase now has a **TDD** section listing up to three candidate behaviors for `/tdd`, following that skill's limit, or the reason it has none. Phases 1 (setup) and 7 (browser drag-and-drop) have no TDD; Phase 6 (stage rules, `can_make_offer`, `move_application`) is marked as the most important TDD phase.
+- **Decisions:** The agent filled gaps HANDOFF.md had left open: the app split and URL design; a `seed` command from Phase 1 (the `/implement` skill expects one); and `CLAUDE.md` plus a testing guide in Phase 1 (`/implement` reads both). The Openings list layout is deferred to the start of Phase 4.
+- **Deviations:** None. The PRD and the 14-phase breakdown were accepted as proposed.
+- **Sideways:** None.
+
 ## 2026-10-19 — /grill-me design interview for the ATS (23 decisions, 3 prototypes)
 
 ### Prompts
