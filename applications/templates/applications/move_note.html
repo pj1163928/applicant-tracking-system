@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Move {{ application.candidate.full_name }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'openings:board' application.opening_id %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to the board
+</a>
+
+<div class="card mx-auto mt-4 max-w-xl border border-base-300 bg-base-100 shadow-sm">
+  <div class="card-body">
+    {% include "applications/partials/note_form.html" with in_dialog=False %}
+  </div>
+</div>
+{% endblock %}

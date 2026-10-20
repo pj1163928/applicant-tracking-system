@@ -28,6 +28,90 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — Applicant Tracking System: Phase 6/14, Pipeline board and Move menu
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking system phase 6`.
+2. Looks good just make sure that the tests distinguish a note prompt should open from a note is required for validation. Text the complete transition matrix rather tha the 64 comdiantions of 8 stages. Test that moving to a current stage is rejected and the terminal stages cannot be exited unless defined transition table permits it. Verify that rejected and withdrawn require an optional note prompt while transitions requiring a mandatory note cannot proceed without one. Keep both helpers to where they do not depend on database queries http request or user permissions.
+can_make_offer make sure that it includes admins recruiters and hiring managers as well as the designated authority verify that an authority must be active and eligible before the offer is made. Test inactive designate authority, and authority who has become an iterviewer  and an authority with no eligible role. make sure that admins or recruiters cannot bypass the authority requirement because of elevated permissions.  Test this with offer and hired so the 2 destinations cannot accidental acquire different authorization rolse. Make surea succsesful move only creates on stagfe change and updates applicationstage. Test refused move leaves both the cached stage and history unchanges. Cover invalid transitions, missing notes, unauthorized users and offer-permission failures. Ensure that stale card submissions cannot overwrite a newer stage. Make sure that repeated submissions cannot create duplicate history entries or move an application to an unexpected stage.
+3. Yes and go through with the next phase
+4. Looks good move to next
+5. Yes continue to development
+
+### Summary
+
+- **Outcome:** A pipeline board for each opening at `/openings/<pk>/board/`, open to every role.
+  - **Columns:** one per stage. Hired gets a green column, and Rejected and Withdrawn are collapsed to a count that expands.
+  - **Move menu:** each card has a **Move** menu listing only the moves the user may make, tagged *next*, *note* or *optional note*. Picking one posts to the single endpoint, `/applications/<pk>/move/`. A one-step move happens at once. Skips, backward moves and reopens open a DaisyUI dialog that needs a note, and Rejected and Withdrawn open one with an optional note.
+  - **Swaps:** a move swaps only the affected columns' counts and cards, out of band, with a status message and no reload.
+  - **Refusals:** illegal moves get a 400 and permission failures a 403. Each comes with a clear message and the columns redrawn as they really are, and nothing is written.
+  - **Who can move:** only Admins, Hiring Managers and the opening's still-eligible designated authority can move into Offer or Hired, and Hired is final. Interviewers see the board with no Move controls.
+  - **Stale and repeated posts:** every menu entry carries the stage its card showed, so a stale card or a double submission is refused rather than overwriting a newer stage.
+  - **History:** each application's full stage history opens as a dialog from its card, or as a page from the candidate and opening pages.
+  - **Without JavaScript:** a move redirects, and a move that needs a note gets a page.
+  - **Seed:** four more Backend Developer applications, with seven move paths made through `move_application()`, so every column has someone in it. A second run changes nothing.
+  - **Checks:** 487 tests pass (135 new); `ruff check` and `ruff format` are clean. All nine Phase 6 acceptance criteria are ticked. No migrations were needed.
+- **Changes:**
+  - `applications/stages.py`:
+    - `ACTIVE_STAGES`, `CLOSED_STAGES`, `PIPELINE`, `OFFER_STAGES` and the `ALLOWED_TRANSITIONS` table.
+    - The pure rule functions: `can_move`, `requires_note` (the move can't be made without a note), `prompts_for_note` (the dialog opens), `move_kind` and `skipped_stages`.
+    - The menu helpers: the `MoveTarget` dataclass, `move_targets(from_stage, may_offer=...)` and `withholds_offer_targets`.
+    - None of these takes a user, a request or the database.
+  - `applications/services.py`: `move_refusal()` checks role, then stale card, then table, then offer authority. `move_application()` locks and re-reads the row, checks the refusal and the note, then writes one StageChange row and the cached stage atomically. It also has the error codes and staff-facing messages.
+  - `applications/board.py` (new): `Column` and `board_columns(opening, user, stages=None)`, used by both the full board and the endpoint's partial swaps.
+  - `applications/forms.py`: `MoveForm` (only checks the request's shape: `to_stage`, the required `expected_stage`, `note`, `confirmed`).
+  - `applications/views.py` and `urls.py`: `PipelineBoardView`, `ApplicationMoveView` (`applications:move`) and `ApplicationHistoryView` (`applications:history`). `openings/urls.py` routes `openings:board` to the board view.
+  - Templates: `board.html` (with a small script that lets HTMX show 400/403 refusals and opens dialogs with `showModal()`), `move_note.html`, `application_history.html`, and the `column`, `column_cards`, `card`, `move_menu`, `move_result`, `note_form`, `note_dialog`, `history_list` and `history_dialog` partials.
+  - `accounts/permissions.py` and `accounts_tags.py`: `STAGE_MOVER_ROLES`, `can_move_applications`, `OFFER_ROLES` and `can_make_offer(user, opening)`, plus their filters.
+  - `openings/.../jobopening_detail.html`: a "Pipeline board" button and a History link on each application row. `candidates/.../candidate_detail.html`: a History link on each row. `applications/models.py`: the docstring points to `move_application()`.
+  - `accounts/management/commands/seed.py`: four more `SEED_APPLICATIONS`, `SeedMove`/`SEED_MOVES` and `seed_moves()`. A path runs only for an application that has never moved, and inside its own savepoint, so a refused step keeps none of the path.
+  - Tests:
+    - `applications/tests/test_stages.py` (new, 41, no database).
+    - `test_moves.py` (new, 29).
+    - `test_board.py` (new, 42).
+    - `accounts/tests/test_permissions.py` (+20).
+    - `accounts/tests/test_seed.py`: the "everything at Applied" test became "one first row each", plus three new tests.
+  - `templates/icons/`: `square-kanban` and `history`, from lucide-static v1.49.0.
+  - `CLAUDE.md`, `docs/TESTING.md`, `README.md`: the stage-rule, move and board conventions; the SQL-level "both writes or neither" test pattern, pure-module tests and the stale-submission tests; and the updated status.
+  - `plans/applicant-tracking-system.md`: Phase 6 criteria ticked.
+- **TDD:** The plan's three candidates. My notes at the brief made each cycle a small group of tests for one behavior. Each was red on assertions against a stub, and then green.
+  1. *`can_move` and `requires_note`.*
+     - The test: `can_move` checked against a complete transition matrix written out by hand, plus a note table classing every legal move as no note, optional or required.
+     - Separate tests cover same-stage moves, leaving terminal stages, prompt versus requirement, and `ValueError` for illegal moves. The file has no `django_db` mark.
+     - Red: 24 assertion failures.
+     - The fix: the table built from the stage groups, with `requires_note` refusing anything but one step forward, except into Rejected or Withdrawn.
+  2. *`can_make_offer`.*
+     - The test: roles on someone else's opening; the authority on their own, and on a closed opening; an authority made inactive, turned Interviewer, or left with no role; and `is_staff` or move rights never standing in.
+     - Red: 3 failures (Admin, Hiring Manager, the authority).
+     - The fix: `has_role(user, *OFFER_ROLES)`, or being the authority while `can_be_designated_authority()` still holds.
+  3. *`move_application`.*
+     - The tests: exactly one row and the new stage on success; twelve refusals, each leaving the stage and history unchanged; Offer and Hired side by side for nine users; a stale card; a stale copy without `expected_stage`; double submission; and a rollback test that fails the INSERT or the UPDATE at the SQL level.
+     - Red: all 29 failed.
+     - The fix: lock and re-read, `move_refusal()`, the note check, then both writes in one transaction.
+- **Decisions:**
+  - Admins, Recruiters and Hiring Managers can move stages, per the PRD's permission summary. Offer and Hired also need `can_make_offer`.
+  - Hired is a normal column after Offer, not collapsed.
+  - The server decides whether to show the note dialog (`HX-Retarget` to `#dialog-slot`), so Phase 7's drag-and-drop can post the same way.
+  - Refusals return 400/403 with the real columns, and the board's script lets HTMX swap them.
+  - `expected_stage` is required at the endpoint, and stale moves are refused rather than re-judged.
+  - The Move menu is a `<details>` that expands inside the card, because a floating dropdown would be clipped by the board's horizontal scroll container.
+  - A non-clickable menu line says who can move into Offer or Hired when those are left out.
+  - Seed paths are made by the users who would really make them, with notes wherever the rules need one.
+  - Chloe (not Gus) gets the Withdrawn card, so one seeded candidate still has no applications (story 12).
+- **Deviations:**
+  - At the brief I asked for the stage tests to keep "opens a note prompt" separate from "a note is required", to check against a complete matrix rather than 64 generated cases, to cover same-stage moves and terminal exits, and to keep the helpers free of the database, requests and users. For `can_make_offer` I asked for the inactive, turned-Interviewer and no-role authority cases, a check that elevated permissions can't bypass it, and tests of Offer and Hired side by side. For `move_application` I asked for one row on success, nothing on refusal (invalid moves, missing notes, unauthorized users, offer failures), and protection against stale cards and repeated submissions.
+  - My note said `can_make_offer` should "include admins, recruiters and hiring managers", and also that admins and recruiters can't bypass the authority rule. The agent pointed out that this conflicts with the PRD and proposed a reading: Admins and Hiring Managers anywhere, Recruiters only as an opening's eligible authority, with no flag standing in. I confirmed it.
+  - `prompts_for_note` was added as a second pure helper, and `expected_stage` was added to `move_application`, to meet these requests.
+- **Sideways:**
+  - Cycle 1's first implementation of `prompts_for_note` returned early for Rejected and Withdrawn before checking legality, so Hired → Rejected didn't raise. The illegal-move test caught it.
+  - Two view-test helper bugs, fixed in the tests: the `menu_stages` regex also matched `data-testid="move-menu"`, and messages with apostrophes are escaped in HTML (`isn&#x27;t`), so a `page()` helper unescapes bodies.
+  - The first version of the seed's all-or-nothing test failed the path at its first step, which proved nothing about rollback. It was rewritten so two steps pass before Offer is refused, and checked by temporarily removing the savepoint (it went red) before putting it back.
+  - Adding Gus's application would have left no candidate without one, breaking a Phase 5 seed guarantee. He was swapped for Chloe.
+  - Ruff flagged the stage-test shorthands `I` and `O` as ambiguous. All eight were renamed (`AP`, `SC`, `IN`, …) with Python's tokenizer, a mechanical change that left the assertions as they were. It also flagged two over-long lines that had `# fmt: skip`; the markers were removed and the lines reformatted.
+  - On the dev database the first `seed` run skipped 2 applications (Ben and Farah), because Indeed is still retired from earlier manual testing. This is the intended behavior, so that board has no one at Screening or Rejected until Indeed is reactivated and `seed` re-runs. The second run changed nothing.
+  - Headless-Edge screenshots of the seeded board (light, dark, full width, and 360px phone for a manager and an Interviewer) showed the layout working. The first full-width attempt used `max-w-none`, which isn't in the built CSS; it was redone with an inline style.
+
 ## 2026-10-19 — Applicant Tracking System: Phase 5/14, Record applications
 
 ### Prompts

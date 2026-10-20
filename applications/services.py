@@ -1,8 +1,12 @@
-"""Recording applications: who may apply where, the source pre-fill, and the atomic create.
+"""Recording applications and moving them between stages.
 
 ``record_application()`` is the only way an application is created. It writes
 the application and its first ``StageChange`` row (no stage → Applied) in one
 transaction, so neither can exist without the other.
+
+``move_application()`` is the only way an application's stage changes. It
+checks the stage rules and permissions, then writes one ``StageChange`` row and
+updates the cached stage in one transaction.
 """
 
 from django.contrib.auth.models import User
@@ -10,9 +14,18 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import QuerySet
 
-from accounts.permissions import can_manage_applications
+from accounts.permissions import can_make_offer, can_manage_applications, can_move_applications
 from applications.models import Application, StageChange
-from applications.stages import Stage
+from applications.stages import (
+    BACK,
+    OFFER_STAGES,
+    REOPEN,
+    SKIP,
+    Stage,
+    can_move,
+    move_kind,
+    requires_note,
+)
 from candidates.models import Candidate, Source
 from openings.models import JobOpening
 
@@ -108,6 +121,117 @@ def record_application(
         cause=StageChange.Cause.MANUAL,
     )
     return application
+
+
+ILLEGAL_MOVE = "illegal_move"
+NOTE_REQUIRED = "note_required"
+STALE_STAGE = "stale_stage"
+
+NOTE_REASONS = {SKIP: "is skipping ahead", BACK: "is moving back", REOPEN: "is being reopened"}
+
+
+def move_refusal(
+    application: Application, to_stage: str, by: User, *, expected_stage: str | None = None
+) -> ValidationError | PermissionDenied | None:
+    """Return why ``by`` can't move ``application`` to ``to_stage`` now, or None if they can.
+
+    Checks, in order: that ``by`` may move stages at all; that the application
+    is still at ``expected_stage`` (the stage the user's card showed), if one is
+    given; the transitions table; and ``can_make_offer`` for Offer and Hired.
+    The note is not checked here: the board asks for it after this passes, and
+    ``move_application()`` refuses a missing one. Judges ``application.stage``
+    as given, so ``move_application()`` passes the stored row.
+    """
+    if not can_move_applications(by):
+        return PermissionDenied("Only Admins, Recruiters and Hiring Managers can move applicants.")
+    name, current = application.candidate.full_name, application.stage
+    if expected_stage is not None and current != expected_stage:
+        return ValidationError(
+            f"{name} has moved to {Stage(current).label} since this board loaded, "
+            "so that move wasn't made. The board now shows where they are.",
+            code=STALE_STAGE,
+        )
+    if not can_move(current, to_stage):
+        return ValidationError(illegal_move_message(name, current, to_stage), code=ILLEGAL_MOVE)
+    if to_stage in OFFER_STAGES and not can_make_offer(by, application.opening):
+        authority = application.opening.designated_authority
+        return PermissionDenied(
+            f"Only Admins, Hiring Managers or {authority.get_full_name() or authority.username}, "
+            f"this opening's designated authority, can move applicants into "
+            f"{Stage(to_stage).label}."
+        )
+    return None
+
+
+def illegal_move_message(name: str, from_stage: str, to_stage: str) -> str:
+    """Explain, in words for staff, why the transitions table refuses this move."""
+    if to_stage not in Stage.values:
+        return f"{to_stage!r} isn't a hiring stage."
+    current, target = Stage(from_stage).label, Stage(to_stage).label
+    if from_stage == to_stage:
+        return f"{name} is already at {current}."
+    if from_stage == Stage.HIRED:
+        return f"{name} has been hired, and Hired is final."
+    if to_stage == Stage.HIRED:
+        return f"{name} can only be moved to Hired from Offer."
+    return f"A {current.lower()} application can only be reopened to an active stage, not {target}."
+
+
+@transaction.atomic
+def move_application(
+    application: Application,
+    to_stage: str,
+    *,
+    by: User,
+    note: str = "",
+    cause: str = StageChange.Cause.MANUAL,
+    expected_stage: str | None = None,
+) -> StageChange:
+    """Move ``application`` to ``to_stage``: the only way an application's stage changes.
+
+    Locks and re-reads the stored application, so the rules judge its real
+    stage, not the caller's possibly out-of-date copy. Then writes one
+    ``StageChange`` row (from, to, ``by``, now, the trimmed ``note``, ``cause``)
+    and updates the cached stage in the same transaction: if either write
+    fails, neither is kept. Returns the new row and updates ``application``.
+
+    Pass ``expected_stage`` (the stage the user's card showed) to refuse the
+    move if anyone has moved the application since, so a stale card or a
+    repeated submission can't overwrite a newer stage.
+
+    Raises ``PermissionDenied`` if ``by`` may not move stages, or may not move
+    into Offer or Hired here, and ``ValidationError`` (code ``STALE_STAGE``,
+    ``ILLEGAL_MOVE`` or ``NOTE_REQUIRED``) for the rest. Nothing is written
+    when it refuses.
+    """
+    stored = (
+        Application.objects.select_for_update()
+        .select_related("candidate", "opening__designated_authority")
+        .get(pk=application.pk)
+    )
+    refusal = move_refusal(stored, to_stage, by, expected_stage=expected_stage)
+    if refusal is not None:
+        raise refusal
+    note = note.strip()
+    if requires_note(stored.stage, to_stage) and not note:
+        reason = NOTE_REASONS[move_kind(stored.stage, to_stage)]
+        raise ValidationError(
+            f"Add a note to say why {stored.candidate.full_name} {reason} "
+            f"to {Stage(to_stage).label}.",
+            code=NOTE_REQUIRED,
+        )
+    row = StageChange.objects.create(
+        application=stored,
+        from_stage=stored.stage,
+        to_stage=to_stage,
+        changed_by=by,
+        note=note,
+        cause=cause,
+    )
+    stored.stage = to_stage
+    stored.save(update_fields=["stage", "updated_at"])
+    application.stage, application.updated_at = stored.stage, stored.updated_at
+    return row
 
 
 def duplicate_error(candidate: Candidate, opening: JobOpening) -> ValidationError:

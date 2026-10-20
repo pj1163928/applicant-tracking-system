@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}History · {{ application.candidate.full_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap gap-2">
+  <a href="{% url 'openings:board' application.opening_id %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+    {% icon "arrow-left" "size-4" %} {{ application.opening.title }} board
+  </a>
+  <a href="{{ application.candidate.get_absolute_url }}" class="btn btn-ghost btn-sm gap-2">
+    {% icon "user-round" "size-4" %} {{ application.candidate.full_name }}
+  </a>
+</div>
+
+<section class="card mx-auto mt-4 max-w-2xl border border-base-300 bg-base-100 shadow-sm">
+  <div class="card-body">
+    <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+      {% icon "history" "size-4" %} Stage history
+    </p>
+    <h1 class="text-2xl font-bold">{{ application.candidate.full_name }}</h1>
+    <p class="flex flex-wrap items-center gap-2 text-sm opacity-80">
+      {{ application.opening.title }} · now {% include "applications/partials/stage_badge.html" %}
+    </p>
+    <div class="mt-2">{% include "applications/partials/history_list.html" %}</div>
+  </div>
+</section>
+{% endblock %}

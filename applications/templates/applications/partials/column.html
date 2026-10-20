@@ -1,0 +1,28 @@
+{% comment %}
+One stage column. Expects `column` and `opening`. Rejected and Withdrawn are a
+collapsed <details> showing only a count; the rest are always open. The count
+(#count-<stage>) and the cards (#cards-<stage>) are what a move swaps, so an
+expanded column stays expanded.
+{% endcomment %}
+{% if column.collapsible %}
+<details class="group w-14 shrink-0 rounded-box border border-base-300 bg-base-300/40 open:w-72" data-testid="column-{{ column.stage }}">
+  <summary class="flex cursor-pointer list-none flex-col items-center gap-2 rounded-box p-2 transition-colors hover:bg-base-300/60 group-open:flex-row group-open:justify-between group-open:px-3 motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
+           aria-label="{{ column.stage.label }}: show or hide">
+    <span class="text-sm font-semibold [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb]">{{ column.stage.label }}</span>
+    <span id="count-{{ column.stage }}" class="badge badge-sm badge-neutral" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
+  </summary>
+  <ul id="cards-{{ column.stage }}" class="grid gap-2 p-2 pt-0">
+    {% include "applications/partials/column_cards.html" %}
+  </ul>
+</details>
+{% else %}
+<section class="w-72 shrink-0 rounded-box border border-base-300 {% if column.stage == 'hired' %}bg-success/5{% else %}bg-base-100/60{% endif %}" aria-labelledby="column-{{ column.stage }}-heading" data-testid="column-{{ column.stage }}">
+  <h2 id="column-{{ column.stage }}-heading" class="flex items-center justify-between px-3 py-2 text-sm font-semibold">
+    {{ column.stage.label }}
+    <span id="count-{{ column.stage }}" class="badge badge-sm {% if column.stage == 'hired' %}badge-success{% else %}badge-ghost{% endif %}" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
+  </h2>
+  <ul id="cards-{{ column.stage }}" class="grid gap-2 p-2 pt-0">
+    {% include "applications/partials/column_cards.html" %}
+  </ul>
+</section>
+{% endif %}

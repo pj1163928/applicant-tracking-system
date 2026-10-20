@@ -1,0 +1,7 @@
+{% comment %}The note step as a DaisyUI modal; the board's script opens it with showModal().{% endcomment %}
+<dialog class="modal modal-bottom sm:modal-middle" aria-labelledby="note-dialog-title" data-testid="note-dialog">
+  <div class="modal-box">
+    {% include "applications/partials/note_form.html" with in_dialog=True %}
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+</dialog>

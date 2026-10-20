@@ -2,6 +2,7 @@ from django import forms
 
 from applications.models import Application
 from applications.services import application_refusal
+from applications.stages import Stage
 from candidates.models import Candidate, Source
 from config.forms import DaisyUIFormMixin
 from openings.models import JobOpening
@@ -147,3 +148,39 @@ class ApplicationSourceForm(ReferredByMixin, DaisyUIFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.fields["source"].queryset = Source.objects.active_or_current(self.instance.source)
+
+
+class MoveForm(DaisyUIFormMixin, forms.Form):
+    """A stage move posted from the board: the target, the card's stage, and an optional note.
+
+    This only checks the shape of the request. ``move_refusal()`` and
+    ``move_application()`` decide whether the move is allowed and whether the
+    note is required. ``expected_stage`` is the stage the card showed, so a
+    stale card can't overwrite a newer stage. ``confirmed`` is set by the note
+    dialog, so a move that asks for a note isn't made before the user has seen it.
+    """
+
+    CLASSES = {"note": ("textarea w-full", "textarea-error")}
+
+    to_stage = forms.ChoiceField(
+        choices=Stage.choices,
+        error_messages={
+            "required": "Pick a stage to move to.",
+            "invalid_choice": "That isn't a hiring stage.",
+        },
+    )
+    expected_stage = forms.ChoiceField(
+        choices=Stage.choices,
+        widget=forms.HiddenInput,
+        error_messages={
+            "required": "This move didn't say which stage its card showed. Reload the board and "
+            "try again.",
+            "invalid_choice": "That isn't a hiring stage.",
+        },
+    )
+    note = forms.CharField(
+        required=False,
+        max_length=2000,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    confirmed = forms.BooleanField(required=False, widget=forms.HiddenInput)

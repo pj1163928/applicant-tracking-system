@@ -201,18 +201,18 @@ A board at `/openings/<pk>/board/` for one opening:
 
 ### Acceptance criteria
 
-- [ ] The allowed-transitions table matches the PRD:
+- [x] The allowed-transitions table matches the PRD:
   - any active stage moves to any other active stage, Rejected or Withdrawn;
   - Rejected and Withdrawn can be reopened to an active stage;
   - Hired is reachable only from Offer and is final.
-- [ ] A note is required for skips, backward moves and reopens; optional for Rejected or Withdrawn; not needed for a one-step forward move.
-- [ ] Only Admins, Hiring Managers or the opening's designated authority can move into Offer or Hired.
-- [ ] Illegal or unauthorised moves posted straight to the endpoint are refused with a clear message, and nothing is written.
-- [ ] Each move writes exactly one StageChange row (from, to, by, at, note, cause = manual) and updates the cached stage in the same transaction.
-- [ ] The Move menu lists only legal targets for the current user, tagged when a note is needed.
-- [ ] A move swaps only the affected part of the board, with no full reload.
-- [ ] Rejected and Withdrawn show as counts and expand to list their cards.
-- [ ] Interviewers see the board with no Move controls.
+- [x] A note is required for skips, backward moves and reopens; optional for Rejected or Withdrawn; not needed for a one-step forward move.
+- [x] Only Admins, Hiring Managers or the opening's designated authority can move into Offer or Hired.
+- [x] Illegal or unauthorised moves posted straight to the endpoint are refused with a clear message, and nothing is written.
+- [x] Each move writes exactly one StageChange row (from, to, by, at, note, cause = manual) and updates the cached stage in the same transaction.
+- [x] The Move menu lists only legal targets for the current user, tagged when a note is needed.
+- [x] A move swaps only the affected part of the board, with no full reload.
+- [x] Rejected and Withdrawn show as counts and expand to list their cards.
+- [x] Interviewers see the board with no Move controls.
 
 ### TDD
 

@@ -1,0 +1,15 @@
+{% comment %}An application's stage history as a modal, opened from a board card. Expects `application` and `changes`.{% endcomment %}
+<dialog class="modal modal-bottom sm:modal-middle" aria-labelledby="history-dialog-title" data-testid="history-dialog">
+  <div class="modal-box">
+    <h2 id="history-dialog-title" class="text-lg font-bold">{{ application.candidate.full_name }}</h2>
+    <p class="mt-1 flex flex-wrap items-center gap-2 text-sm opacity-80">
+      {{ application.opening.title }} · now {% include "applications/partials/stage_badge.html" %}
+    </p>
+    <div class="mt-4">{% include "applications/partials/history_list.html" %}</div>
+    <div class="modal-action">
+      <a href="{% url 'applications:history' application.pk %}" class="btn btn-ghost btn-sm">Open as a page</a>
+      <form method="dialog"><button class="btn btn-sm">Close</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+</dialog>

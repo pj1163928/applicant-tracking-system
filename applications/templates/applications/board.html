@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Board · {{ opening.title }}{% endblock %}
+
+{% block content %}
+<div data-board>
+  <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+    {% icon "arrow-left" "size-4" %} {{ opening.title }}
+  </a>
+
+  <header class="mt-4 flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        {% icon "square-kanban" "size-4" %} Pipeline board
+      </p>
+      <div class="mt-1 flex flex-wrap items-center gap-2">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">{{ opening.title }}</h1>
+        {% include "openings/partials/status_badge.html" %}
+      </div>
+      <p class="mt-1 text-sm opacity-70">{{ opening.department }}{% if opening.location %} · {{ opening.location }}{% endif %}</p>
+    </div>
+    <div class="rounded-box border border-base-300 bg-base-100 p-3" data-testid="authority-panel">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">Designated authority</p>
+      <div class="mt-1">{% include "openings/partials/authority.html" %}</div>
+    </div>
+  </header>
+
+  {% if user|can_move_applications %}
+  <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" data-testid="board-legend">
+    <span class="opacity-70">Use <strong>Move</strong> on a card:</span>
+    <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-success badge-soft">next</span> one step forward</span>
+    <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-warning badge-soft">note</span> needs a note</span>
+    <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-ghost">optional note</span> asks for one</span>
+    {% if user|can_make_offer:opening %}
+    <span class="badge badge-sm badge-success badge-soft" data-testid="offer-allowed">You can move applicants into Offer and Hired</span>
+    {% else %}
+    <span class="badge badge-sm badge-ghost h-auto py-0.5" data-testid="offer-withheld">Offer and Hired: Admins, Hiring Managers or {{ opening.designated_authority.get_full_name|default:opening.designated_authority.username }}</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div role="note" class="alert alert-info alert-soft mt-4 text-sm" data-testid="view-only">
+    {% icon "eye" "size-5" %}
+    <span>You can view this board and each applicant's history, but your role can't move applicants.</span>
+  </div>
+  {% endif %}
+
+  {# Move results and refusals are swapped in here; screen readers announce them. #}
+  <div id="board-status" role="status" aria-live="polite"></div>
+
+  <div class="-mx-4 mt-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0" data-testid="board">
+    <div class="flex items-start gap-3">
+      {% for column in columns %}
+      {% include "applications/partials/column.html" %}
+      {% endfor %}
+    </div>
+  </div>
+
+  {# The note dialog and the history dialog are swapped in here. #}
+  <div id="dialog-slot"></div>
+</div>
+
+<script>
+  (function () {
+    const board = document.querySelector("[data-board]");
+    // A refused move answers 400 or 403 with a message and the real columns. HTMX skips
+    // error responses by default, so let the board's own requests show them.
+    document.body.addEventListener("htmx:beforeSwap", function (event) {
+      const status = event.detail.xhr.status;
+      if ((status === 400 || status === 403) && board.contains(event.detail.requestConfig.elt)) {
+        event.detail.shouldSwap = true;
+        event.detail.isError = false;
+      }
+    });
+    // Open a newly arrived dialog as a modal, so focus moves into it and Escape closes it.
+    document.body.addEventListener("htmx:afterSettle", function () {
+      const dialog = document.querySelector("#dialog-slot dialog:not([open])");
+      if (dialog) dialog.showModal();
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% comment %}
+The move endpoint's HTMX answer. The message goes into #board-status (the
+request's target). Each affected column's count and cards are swapped out of
+band, and the dialog slot is emptied, which closes any open note dialog.
+Expects `message`, `level`, `columns` and `opening`.
+{% endcomment %}
+<div role="{% if level == 'error' %}alert{% else %}status{% endif %}" class="alert alert-soft mt-4 text-sm animate-rise motion-reduce:animate-none {% if level == 'error' %}alert-error{% else %}alert-success{% endif %}" data-testid="board-message">
+  <span>{{ message }}</span>
+</div>
+{% for column in columns %}
+<span id="count-{{ column.stage }}" hx-swap-oob="innerHTML">{{ column.count }}</span>
+<ul id="cards-{{ column.stage }}" hx-swap-oob="innerHTML" data-testid="swap-{{ column.stage }}">
+  {% include "applications/partials/column_cards.html" %}
+</ul>
+{% endfor %}
+<div id="dialog-slot" hx-swap-oob="innerHTML"></div>

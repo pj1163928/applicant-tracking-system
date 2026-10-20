@@ -1,0 +1,6 @@
+{% comment %}The cards inside one column's <ul>. Expects `column` and `opening`.{% endcomment %}
+{% for application in column.applications %}
+{% include "applications/partials/card.html" %}
+{% empty %}
+<li class="rounded-box border border-dashed border-base-300 p-4 text-center text-xs opacity-60" data-testid="column-empty">No one at {{ column.stage.label }}.</li>
+{% endfor %}

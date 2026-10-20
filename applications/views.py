@@ -1,17 +1,37 @@
 from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Model, QuerySet
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.cache import patch_vary_headers
-from django.views.generic import CreateView, UpdateView
+from django.views import View
+from django.views.generic import CreateView, DetailView, UpdateView
 
 from accounts.mixins import RoleRequiredMixin
-from accounts.permissions import APPLICATION_MANAGER_ROLES
-from applications.forms import ApplicationForm, ApplicationSourceForm
+from accounts.permissions import APPLICATION_MANAGER_ROLES, STAGE_MOVER_ROLES
+from applications.board import board_columns
+from applications.forms import ApplicationForm, ApplicationSourceForm, MoveForm
 from applications.models import Application
-from applications.services import openings_open_to, prefill_source, record_application
+from applications.services import (
+    NOTE_REQUIRED,
+    move_application,
+    move_refusal,
+    openings_open_to,
+    prefill_source,
+    record_application,
+)
+from applications.stages import (
+    BACK,
+    CLOSE,
+    REOPEN,
+    SKIP,
+    Stage,
+    move_kind,
+    prompts_for_note,
+    requires_note,
+    skipped_stages,
+)
 from candidates.models import Candidate
 from config.htmx import is_htmx_partial
 from openings.models import JobOpening
@@ -177,3 +197,162 @@ class ApplicationUpdateView(RoleRequiredMixin, SourceFieldsMixin, SuccessMessage
             "back_url": back.get_absolute_url(),
             "back_label": f"Back to {back}",
         }
+
+
+class PipelineBoardView(DetailView):
+    """One opening's pipeline board. Every role may view it; only movers get Move menus."""
+
+    queryset = JobOpening.objects.select_related("designated_authority")
+    template_name = "applications/board.html"
+    context_object_name = "opening"
+
+    def get_context_data(self, **kwargs):
+        columns = board_columns(self.object, self.request.user)
+        return super().get_context_data(**kwargs) | {"columns": columns}
+
+
+NOTE_PROMPTS = {
+    BACK: "This moves {name} back. Say why.",
+    REOPEN: "This reopens a {stage} application. Say why.",
+    CLOSE: "Add a reason if it helps. It's kept in the stage history.",
+}
+
+
+class ApplicationMoveView(RoleRequiredMixin, View):
+    """The single endpoint for stage moves, from the Move menu (and, later, drag-and-drop).
+
+    POST ``to_stage`` and ``expected_stage`` (the stage the card showed). A
+    move that asks for a note gets the note dialog first; the dialog posts
+    again with ``confirmed`` and the note. Every move goes through
+    ``move_application()``. HTMX requests get the status message plus the
+    affected columns as out-of-band swaps; refusals come back as 400 (or 403
+    for permission) with the columns as they really are. Without HTMX, a move
+    redirects back to the board.
+    """
+
+    allowed_roles = STAGE_MOVER_ROLES
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        self.application = get_object_or_404(
+            Application.objects.select_related("candidate", "opening__designated_authority"), pk=pk
+        )
+        self.opening = self.application.opening
+        form = MoveForm(request.POST)
+        if not form.is_valid():
+            if set(form.errors) == {"note"}:
+                return self.ask_for_note(form)
+            first_error = next(iter(form.errors.values()))[0]
+            return self.refused(
+                ValidationError(first_error), form.cleaned_data.get("expected_stage")
+            )
+        data = form.cleaned_data
+        to_stage, shown = data["to_stage"], data["expected_stage"]
+        refusal = move_refusal(self.application, to_stage, request.user, expected_stage=shown)
+        if refusal is not None:
+            return self.refused(refusal, shown)
+        if prompts_for_note(self.application.stage, to_stage) and not data["confirmed"]:
+            return self.ask_for_note(form)
+        from_stage = self.application.stage
+        try:
+            move_application(
+                self.application,
+                to_stage,
+                by=request.user,
+                note=data["note"],
+                expected_stage=shown,
+            )
+        except ValidationError as error:
+            if error.code == NOTE_REQUIRED:
+                form.add_error("note", error)
+                return self.ask_for_note(form)
+            return self.refused(error, shown)
+        except PermissionDenied as error:
+            return self.refused(error, shown)
+        name = self.application.candidate.full_name
+        message = f"Moved {name} from {Stage(from_stage).label} to {Stage(to_stage).label}."
+        if not is_htmx_partial(request):
+            messages.success(request, message)
+            return redirect("openings:board", self.opening.pk)
+        return self.board_update(message, "success", [from_stage, to_stage, shown])
+
+    def refused(self, error: ValidationError | PermissionDenied, shown: str | None):
+        """Say why the move wasn't made, and show the columns as they really are."""
+        status = 403 if isinstance(error, PermissionDenied) else 400
+        message = error.messages[0] if isinstance(error, ValidationError) else str(error)
+        if is_htmx_partial(self.request):
+            stages = [self.application.stage, shown] if shown else [self.application.stage]
+            return self.board_update(message, "error", stages, status=status)
+        messages.error(self.request, message)
+        columns = board_columns(self.opening, self.request.user)
+        context = {"opening": self.opening, "columns": columns}
+        return self.respond("applications/board.html", context, status)
+
+    def ask_for_note(self, form: MoveForm):
+        """Show the note dialog (or, without HTMX, a page) before making the move."""
+        from_stage, to_stage = self.application.stage, form.cleaned_data["to_stage"]
+        kind, required = move_kind(from_stage, to_stage), requires_note(from_stage, to_stage)
+        if kind == SKIP:
+            labels = [stage.label for stage in skipped_stages(from_stage, to_stage)]
+            reason = f"This skips {' and '.join(labels)}. Say why it's being expedited."
+        else:
+            reason = NOTE_PROMPTS[kind].format(
+                name=self.application.candidate.full_name,
+                stage=Stage(from_stage).label.lower(),
+            )
+        form.fields["note"].widget.attrs.update(
+            {"required": required, "autofocus": True, "placeholder": "Required" if required else ""}
+        )
+        context = {
+            "application": self.application,
+            "form": form,
+            "to_stage": Stage(to_stage),
+            "expected_stage": form.cleaned_data["expected_stage"],
+            "requires_note": required,
+            "reason": reason,
+        }
+        if not is_htmx_partial(self.request):
+            return self.respond("applications/move_note.html", context)
+        response = self.respond("applications/partials/note_dialog.html", context)
+        response["HX-Retarget"] = "#dialog-slot"
+        response["HX-Reswap"] = "innerHTML"
+        return response
+
+    def board_update(self, message: str, level: str, stages: list[str], status: int = 200):
+        """The status message, plus the given columns swapped in out of band."""
+        columns = board_columns(self.opening, self.request.user, stages)
+        context = {"message": message, "level": level, "columns": columns, "opening": self.opening}
+        return self.respond("applications/partials/move_result.html", context, status)
+
+    def respond(self, template: str, context: dict, status: int = 200):
+        response = render(self.request, template, context, status=status)
+        patch_vary_headers(response, ["HX-Request"])
+        return response
+
+
+class ApplicationHistoryView(DetailView):
+    """An application's complete stage history, newest first. Every role may view it.
+
+    HTMX requests (from a board card) get it as a dialog; others get a page.
+    """
+
+    queryset = Application.objects.select_related(
+        "candidate", "opening__designated_authority", "source"
+    )
+    context_object_name = "application"
+
+    def get_context_data(self, **kwargs):
+        changes = self.object.stage_changes.select_related("changed_by").order_by(
+            "-changed_at", "-pk"
+        )
+        return super().get_context_data(**kwargs) | {"changes": changes}
+
+    def get_template_names(self) -> list[str]:
+        if is_htmx_partial(self.request):
+            return ["applications/partials/history_dialog.html"]
+        return ["applications/application_history.html"]
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        patch_vary_headers(response, ["HX-Request"])
+        return response

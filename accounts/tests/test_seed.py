@@ -1,17 +1,20 @@
 import pytest
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.core.management import call_command
 
 from accounts.management.commands.seed import (
     SEED_APPLICATIONS,
     SEED_CANDIDATES,
+    SEED_MOVES,
     SEED_OPENINGS,
     SEED_PASSWORD,
     SEED_SOURCES,
+    seed_moves,
 )
 from accounts.roles import role_label
 from applications.models import Application, StageChange
-from applications.services import prefill_source
+from applications.services import move_application, prefill_source
+from applications.stages import Stage, can_move, requires_note
 from candidates.models import Candidate, Source
 from openings.models import JobOpening
 
@@ -175,17 +178,17 @@ def test_seed_repairs_a_seeded_openings_details():
     assert data.location == "Dallas, TX"
 
 
-def test_seed_adds_applications_at_applied_each_with_its_first_history_row():
+def test_seed_records_each_application_with_its_first_history_row():
     call_command("seed")
 
     applications = Application.objects.select_related("opening", "source")
     assert applications.count() == len(SEED_APPLICATIONS)
-    assert set(applications.values_list("stage", flat=True)) == {Application.Stage.APPLIED}
     assert all(a.opening.is_open and a.source.is_active for a in applications)
-    assert StageChange.objects.count() == len(SEED_APPLICATIONS)
-    assert set(
-        StageChange.objects.values_list("from_stage", "to_stage", "changed_by__username")
-    ) == {("", Application.Stage.APPLIED, "recruiter")}
+    first_rows = StageChange.objects.filter(from_stage="")
+    assert first_rows.count() == len(SEED_APPLICATIONS)
+    assert set(first_rows.values_list("to_stage", "changed_by__username")) == {
+        (Application.Stage.APPLIED, "recruiter")
+    }
     referrals = applications.exclude(referred_by="")
     assert {a.source.category for a in referrals} == {Source.Category.REFERRAL}
     # Some candidates have no applications, and Ann's latest source is the referral.
@@ -217,3 +220,67 @@ def test_seed_skips_a_missing_application_whose_opening_staff_have_closed():
 
     assert not Application.objects.filter(opening__title="Data Engineer").exists()
     assert Application.objects.count() == len(SEED_APPLICATIONS) - 1
+
+
+def test_seed_moves_backend_developer_applicants_into_every_column():
+    call_command("seed")
+
+    backend = Application.objects.filter(opening__title="Backend Developer")
+    assert set(backend.values_list("stage", flat=True)) == set(Stage) - {Stage.HIRED}
+    hired = Application.objects.get(stage=Stage.HIRED)
+    assert (hired.candidate.email, hired.opening.title) == (
+        "elena.rossi@example.com",
+        "Product Designer",
+    )
+    # Every seeded move made sense under the rules: a stage history the app could have written.
+    for spec in SEED_MOVES:
+        application = Application.objects.get(
+            candidate__email=spec.candidate, opening__title=spec.opening
+        )
+        assert application.stage == spec.path[-1][0]
+        moves = application.stage_changes.exclude(from_stage="")
+        assert moves.count() == len(spec.path)
+        for move in moves:
+            assert can_move(move.from_stage, move.to_stage)
+            assert move.note or not requires_note(move.from_stage, move.to_stage)
+            assert move.changed_by.username == spec.by
+
+
+def test_rerunning_seed_never_undoes_a_staff_move():
+    call_command("seed")
+    recruiter = User.objects.get(username="recruiter")
+    isaac = Application.objects.get(candidate__email="isaac.brown@example.com")
+    move_application(isaac, Stage.SCREENING, by=recruiter)  # seed left Isaac at Applied
+    ann = Application.objects.get(
+        candidate__email="ann.lee@example.com", opening__title="Backend Developer"
+    )
+    move_application(ann, Stage.REJECTED, by=recruiter)  # seed moved Ann; staff move her on
+    before = StageChange.objects.count()
+
+    call_command("seed")
+
+    assert StageChange.objects.count() == before
+    assert Application.objects.get(pk=isaac.pk).stage == Stage.SCREENING
+    assert Application.objects.get(pk=ann.pk).stage == Stage.REJECTED
+
+
+def test_seed_moves_a_path_completely_or_not_at_all():
+    call_command("seed")
+    # Hana's path is Interview, Final Review, Offer. Make the manager a Recruiter who is no
+    # longer Backend Developer's authority: the first two steps pass, and Offer is refused.
+    hana = Application.objects.get(candidate__email="hana.kim@example.com")
+    hana.stage_changes.exclude(from_stage="").delete()
+    Application.objects.filter(pk=hana.pk).update(stage=Stage.APPLIED)
+    User.objects.get(username="manager").groups.set([Group.objects.get(name="Recruiter")])
+    JobOpening.objects.filter(title="Backend Developer").update(
+        designated_authority=User.objects.get(username="admin")
+    )
+
+    seed_moves(next(s for s in SEED_MOVES if s.candidate == "hana.kim@example.com"))
+
+    assert stored_path(hana) == (Stage.APPLIED, 1)
+
+
+def stored_path(application) -> tuple[str, int]:
+    fresh = Application.objects.get(pk=application.pk)
+    return fresh.stage, fresh.stage_changes.count()

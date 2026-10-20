@@ -27,7 +27,8 @@ class Application(models.Model):
 
     ``stage`` is a cache of the latest ``StageChange`` row. Create applications
     with ``applications.services.record_application()``, which writes the first
-    history row in the same transaction.
+    history row in the same transaction, and change the stage only with
+    ``applications.services.move_application()``.
     """
 
     Stage = Stage

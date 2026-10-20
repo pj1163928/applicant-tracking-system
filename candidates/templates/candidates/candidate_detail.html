@@ -87,6 +87,9 @@
           </p>
           {% include "applications/partials/source_line.html" %}
         </div>
+        <a href="{% url 'applications:history' application.pk %}" class="btn btn-ghost btn-sm gap-1.5" data-testid="application-history" aria-label="Stage history of the {{ application.opening.title }} application">
+          {% icon "history" "size-4" %}<span class="hidden sm:inline">History</span>
+        </a>
         {% if user|can_manage_applications %}
         <a href="{% url 'applications:update' application.pk %}" class="btn btn-ghost btn-sm gap-1.5" data-testid="application-edit" aria-label="Edit the source of the {{ application.opening.title }} application">
           {% icon "pencil" "size-4" %}<span class="hidden sm:inline">Edit source</span>

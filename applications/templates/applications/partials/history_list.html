@@ -1,0 +1,18 @@
+{% comment %}An application's stage history as a timeline, newest first. Expects `changes`.{% endcomment %}
+<ol class="timeline timeline-vertical timeline-compact" data-testid="history">
+  {% for change in changes %}
+  <li data-testid="history-row">
+    {% if not forloop.first %}<hr>{% endif %}
+    <div class="timeline-middle"><span class="block size-2.5 rounded-full {% if forloop.first %}bg-primary{% else %}bg-base-content/30{% endif %}"></span></div>
+    <div class="timeline-end mb-4 min-w-0">
+      <p class="text-sm font-semibold">
+        {% if change.from_stage %}{{ change.get_from_stage_display }} → {{ change.get_to_stage_display }}{% else %}Recorded at {{ change.get_to_stage_display }}{% endif %}
+        {% if change.cause == "closure" %}<span class="badge badge-xs badge-ghost align-middle">{{ change.get_cause_display }}</span>{% endif %}
+      </p>
+      <p class="text-xs opacity-60">{{ change.changed_at|date:"M j, Y, g:i a" }} · {{ change.changed_by.get_full_name|default:change.changed_by.username }}</p>
+      {% if change.note %}<p class="mt-1 text-sm whitespace-pre-line break-words" data-testid="history-note">“{{ change.note }}”</p>{% endif %}
+    </div>
+    {% if not forloop.last %}<hr>{% endif %}
+  </li>
+  {% endfor %}
+</ol>

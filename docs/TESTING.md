@@ -47,7 +47,7 @@ To run one test across roles, parametrize on the fixture name and use
 ## What to test, and how
 
 - **Pure rule and permission functions** (`accounts/roles.py`,
-  `accounts/permissions.py`, later the stage rules and `can_make_offer`): parametrized
+  `accounts/permissions.py`, `applications/stages.py`, `can_make_offer`): parametrized
   tests across every role, plus the edge cases: no group, inactive user,
   anonymous user.
 - **Services** (`move_application`, closure, messaging, `deactivate_staff`):
@@ -74,6 +74,23 @@ To run one test across roles, parametrize on the fixture name and use
 - **"Both rows or neither"** (such as `record_application()` writing the application and
   its first StageChange row): make the second write fail with `monkeypatch` and assert
   that the row counts are unchanged.
+- **"Both writes or neither", whatever method the code uses**: make the database itself
+  refuse one statement with `connection.execute_wrapper(...)`, matching on SQL such as
+  `'INSERT INTO "applications_stagechange"'` or `'UPDATE "applications_application"'`.
+  Parametrize over both writes. See `FailOn` in `applications/tests/test_moves.py`.
+- **Pure rule modules** (such as `applications/tests/test_stages.py`): leave off the
+  `django_db` mark, so pytest-django fails any test that touches the database. Check a
+  rules table against a complete expected table written out by hand, not one rebuilt
+  from the code.
+- **Setting up a starting state**: when the code under test is the thing that changes
+  that state (for example `move_application`), set it up with direct database writes
+  (`put_at` in `test_moves.py`), so the setup doesn't depend on the code being tested.
+- **Stale and repeated submissions**: load a second copy of the row, change the row
+  underneath it, then act through the old copy (or submit the same POST twice). Assert
+  the refusal, and that the stage and history row count are unchanged.
+- **Messages in HTML**: Django escapes apostrophes (`isn&#x27;t`). Compare against
+  `html.unescape(response.content.decode())`, as `page()` does in
+  `applications/tests/test_board.py`.
 - **Case-insensitive uniqueness**: prove the database refuses the clash with
   `bulk_create`, which skips `save()` and form validation.
 - **Choice fields that encode a rule** (such as the designated authority):

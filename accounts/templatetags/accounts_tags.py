@@ -41,3 +41,15 @@ def can_manage_openings(user: roles.AnyUser) -> bool:
 def can_manage_applications(user: roles.AnyUser) -> bool:
     """Show record and edit-source actions: ``{% if user|can_manage_applications %}``."""
     return permissions.can_manage_applications(user)
+
+
+@register.filter
+def can_move_applications(user: roles.AnyUser) -> bool:
+    """Show stage-move controls: ``{% if user|can_move_applications %}``."""
+    return permissions.can_move_applications(user)
+
+
+@register.filter
+def can_make_offer(user: roles.AnyUser, opening) -> bool:
+    """Whether Offer and Hired are open to the user: ``{% if user|can_make_offer:opening %}``."""
+    return permissions.can_make_offer(user, opening)

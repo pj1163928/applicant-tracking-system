@@ -1,0 +1,34 @@
+{% comment %}
+A card's Move menu: only the moves this user may make, tagged by what they ask for.
+Expects `application`, `column` and `opening`. Each entry is a real form, so it
+also works without JavaScript; HTMX posts it and swaps the result into
+#board-status. expected_stage is the stage this card shows, so the server can
+refuse a stale card.
+{% endcomment %}
+<details class="group/move mt-2" data-testid="move-menu">
+  <summary class="btn btn-xs btn-outline w-full list-none justify-between [&::-webkit-details-marker]:hidden" aria-label="Move {{ application.candidate.full_name }}">
+    Move {% icon "chevron-down" "size-3.5 transition-transform group-open/move:rotate-180 motion-reduce:transition-none" %}
+  </summary>
+  <ul class="menu menu-sm mt-2 w-full gap-0.5 rounded-box bg-base-200 p-1">
+    {% for target in column.targets %}
+    <li>
+      <form method="post" action="{% url 'applications:move' application.pk %}" hx-post="{% url 'applications:move' application.pk %}" hx-target="#board-status" hx-disabled-elt="find button" class="p-0" data-testid="move-{{ target.stage }}">
+        {% csrf_token %}
+        <input type="hidden" name="to_stage" value="{{ target.stage }}">
+        <input type="hidden" name="expected_stage" value="{{ application.stage }}">
+        <button type="submit" class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left">
+          {{ target.label }}
+          {% if target.requires_note %}<span class="badge badge-xs badge-warning badge-soft" data-testid="tag-note">note</span>
+          {% elif target.prompts_for_note %}<span class="badge badge-xs badge-ghost" data-testid="tag-optional-note">optional note</span>
+          {% elif target.kind == "forward" %}<span class="badge badge-xs badge-success badge-soft" data-testid="tag-next">next</span>{% endif %}
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+    {% if column.offer_withheld %}
+    <li class="menu-disabled" data-testid="offer-withheld-hint">
+      <span class="whitespace-normal text-xs">{% if column.stage == "offer" %}Hired{% else %}Offer{% endif %} is only for Admins, Hiring Managers or {{ opening.designated_authority.get_full_name|default:opening.designated_authority.username }}.</span>
+    </li>
+    {% endif %}
+  </ul>
+</details>
