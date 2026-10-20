@@ -83,9 +83,18 @@ and any question that is genuinely the user's call.
   `seed` twice to confirm it is idempotent.
 - Stay inside the phase. If you notice something a later phase needs, note
   it; do not build it.
-- Before finishing, `uv run pytest` must be green, and `uv run ruff check .`
-  and `uv run ruff format .` must be clean. Never finish red. If something
-  will not pass, report it with its output.
+- While building, run only the tests for what this phase touches: the
+  phase's own app (`uv run pytest candidates`), one file, or `-k` by name,
+  plus the tests of any shared module you changed (for example
+  `accounts/tests/test_seed.py` after extending the seed). Do not run the
+  full suite after each step or TDD cycle.
+- Run the full suite (`uv run pytest`) once, at the end of the build. Run it
+  earlier only when something points to a cross-app break: a failing import
+  or migration, or a change to shared code such as settings, `base.html`,
+  `accounts.roles`, `RoleRequiredMixin` or `conftest.py`.
+- Before finishing, the full `uv run pytest` must be green, and
+  `uv run ruff check .` and `uv run ruff format .` must be clean. Never
+  finish red. If something will not pass, report it with its output.
 - In the plan, tick each acceptance criterion (`- [x]`) once it is built and
   either covered by a test or checked by hand. Leave any unmet criterion
   unticked and explain why.

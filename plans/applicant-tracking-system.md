@@ -87,11 +87,11 @@ Recruiters and Admins add and edit candidates: first name, last name, email, and
 
 ### Acceptance criteria
 
-- [ ] Recruiters and Admins can create and edit candidates, and Hiring Managers and Interviewers are refused.
-- [ ] Email is required, stored in lowercase, and unique regardless of capital letters (`Ann@X.com` clashes with `ann@x.com`), and the form shows a clear error.
-- [ ] A candidate can exist without any applications.
-- [ ] The list searches by name and by email.
-- [ ] `seed` adds sample candidates.
+- [x] Recruiters and Admins can create and edit candidates, and Hiring Managers and Interviewers are refused.
+- [x] Email is required, stored in lowercase, and unique regardless of capital letters (`Ann@X.com` clashes with `ann@x.com`), and the form shows a clear error.
+- [x] A candidate can exist without any applications.
+- [x] The list searches by name and by email.
+- [x] `seed` adds sample candidates.
 
 ### TDD
 

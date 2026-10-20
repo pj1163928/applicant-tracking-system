@@ -36,13 +36,17 @@ Plain pytest fixtures, no factory libraries. The root `conftest.py` provides:
 | `no_role_user` | logged-in user with no group |
 | `make_user(username, role=None, **fields)` | factory for anything else; password is `"pw"` |
 
+An autouse `fast_password_hashing` fixture switches every test to Django's MD5
+hasher. The default hasher is deliberately slow and made the suite about 90×
+slower. Settings outside tests are unchanged.
+
 To run one test across roles, parametrize on the fixture name and use
 `request.getfixturevalue(name)`. See `accounts/tests/test_mixins.py`.
 
 ## What to test, and how
 
-- **Pure rule and permission functions** (`accounts/roles.py`, later the stage
-  rules and `can_make_offer` and the other permission functions): parametrized
+- **Pure rule and permission functions** (`accounts/roles.py`,
+  `accounts/permissions.py`, later the stage rules and `can_make_offer`): parametrized
   tests across every role, plus the edge cases: no group, inactive user,
   anonymous user.
 - **Services** (`move_application`, closure, messaging, `deactivate_staff`):

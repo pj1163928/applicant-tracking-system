@@ -6,6 +6,12 @@ from django.contrib.auth.models import Group, User
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
 
 
+@pytest.fixture(autouse=True)
+def fast_password_hashing(settings):
+    """Hash passwords with fast MD5 in tests only; the default hasher is slow on purpose."""
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 @pytest.fixture
 def make_user(db):
     """Return a factory that creates a user, optionally in a role group."""

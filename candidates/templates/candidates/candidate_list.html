@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Candidates{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold sm:text-3xl">Candidates</h1>
+    <p class="mt-1 text-sm opacity-70">Everyone we're tracking, whether or not they've applied yet.</p>
+  </div>
+  {% if user|can_manage_candidates %}
+  <a href="{% url 'candidates:create' %}" class="btn btn-primary gap-2" data-testid="candidate-add">
+    {% icon "user-plus" "size-5" %} Add candidate
+  </a>
+  {% endif %}
+</div>
+
+<form method="get" action="{% url 'candidates:list' %}" role="search" class="mt-6"
+      hx-get="{% url 'candidates:list' %}" hx-target="#candidate-results" hx-push-url="true"
+      hx-trigger="input changed delay:300ms from:#candidate-search, search from:#candidate-search, submit">
+  <label class="input w-full sm:max-w-md">
+    {% icon "search" "size-4 opacity-60" %}
+    <input type="search" name="q" id="candidate-search" value="{{ q }}" class="grow"
+           placeholder="Search by name or email" aria-label="Search candidates by name or email"
+           autocomplete="off">
+  </label>
+</form>
+
+<div id="candidate-results" class="mt-4" aria-live="polite">
+  {% include "candidates/partials/results.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}{% if object %}Edit {{ object.full_name }}{% else %}Add candidate{% endif %}{% endblock %}
+
+{% block content %}
+<a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'candidates:list' %}{% endif %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} {% if object %}Back to {{ object.full_name }}{% else %}All candidates{% endif %}
+</a>
+
+<div class="card mx-auto mt-4 max-w-2xl border border-base-300 bg-base-100 shadow-sm">
+  <form method="post" class="card-body gap-4" novalidate>
+    {% csrf_token %}
+    <h1 class="text-2xl font-bold">{% if object %}Edit {{ object.full_name }}{% else %}Add candidate{% endif %}</h1>
+
+    {% if form.non_field_errors %}
+    <div role="alert" class="alert alert-error alert-soft text-sm">
+      {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <fieldset class="fieldset grid gap-x-4 gap-y-3 sm:grid-cols-2">
+      {% for field in form %}
+      <div class="{% if field.name == 'email' or field.name == 'notes' %}sm:col-span-2{% endif %}">
+        <label class="fieldset-legend pt-0" for="{{ field.id_for_label }}">
+          {{ field.label }}{% if not field.field.required %} <span class="font-normal opacity-60">(optional)</span>{% endif %}
+        </label>
+        {{ field }}
+        {% if field.errors %}
+        {% for error in field.errors %}<p class="mt-1 text-sm text-error" data-testid="error-{{ field.name }}">{{ error }}</p>{% endfor %}
+        {% elif field.help_text %}
+        <p class="label mt-1 whitespace-normal">{{ field.help_text }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="card-actions mt-2 justify-end">
+      <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'candidates:list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2">
+        {% if object %}{% icon "save" "size-5" %} Save changes{% else %}{% icon "user-plus" "size-5" %} Add candidate{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

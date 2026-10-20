@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}{{ candidate.full_name }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'candidates:list' %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} All candidates
+</a>
+
+<section class="card mt-4 overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-linear-to-r from-secondary to-accent" aria-hidden="true"></div>
+  <div class="card-body gap-6">
+    <div class="flex flex-wrap items-center gap-4">
+      <div class="avatar avatar-placeholder" aria-hidden="true">
+        <div class="w-14 rounded-full bg-secondary/15 text-secondary">
+          <span class="text-lg font-semibold">{{ candidate.first_name|first|upper }}{{ candidate.last_name|first|upper }}</span>
+        </div>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-2xl font-bold sm:text-3xl">{{ candidate.full_name }}</h1>
+        <p class="text-sm opacity-70">Added {{ candidate.created_at|date:"M j, Y" }}</p>
+      </div>
+      {% if user|can_manage_candidates %}
+      <a href="{% url 'candidates:update' candidate.pk %}" class="btn btn-outline gap-2" data-testid="candidate-edit">
+        {% icon "pencil" "size-4" %} Edit
+      </a>
+      {% endif %}
+    </div>
+
+    <dl class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">Email</dt>
+        <dd class="mt-1 flex items-center gap-2 break-all">
+          {% icon "mail" "size-4 opacity-60" %}
+          <a href="mailto:{{ candidate.email }}" class="link link-hover">{{ candidate.email }}</a>
+        </dd>
+      </div>
+      <div>
+        <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">Phone</dt>
+        <dd class="mt-1 flex items-center gap-2">
+          {% icon "phone" "size-4 opacity-60" %}
+          {% if candidate.phone %}<a href="tel:{{ candidate.phone }}" class="link link-hover">{{ candidate.phone }}</a>{% else %}<span class="opacity-60">Not given</span>{% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    <div>
+      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        {% icon "notebook-pen" "size-4" %} Notes
+      </h2>
+      {% if candidate.notes %}
+      <p class="mt-1 whitespace-pre-line">{{ candidate.notes }}</p>
+      {% else %}
+      <p class="mt-1 opacity-60">No notes.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="mt-6" aria-labelledby="applications-heading">
+  <h2 id="applications-heading" class="text-lg font-bold">Applications</h2>
+  <div class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-6 text-center" data-testid="applications-empty">
+    {% icon "inbox" "mx-auto size-7 opacity-50" %}
+    <p class="mt-2 font-semibold">No applications yet.</p>
+    <p class="text-sm opacity-70">When {{ candidate.first_name }} applies for an opening, it will show up here with its stage.</p>
+  </div>
+</section>
+{% endblock %}

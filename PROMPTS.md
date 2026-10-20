@@ -28,6 +28,46 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — Applicant Tracking System: Phase 2/14, Candidates
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking system phase 2`.
+2. Yes I approve continue development
+3. Yes continue to the next test
+4. Ok one minor suggestion for the test make sure that the test isolates the databse state for each role. Also you can use PermissionDenied or an equivalent authorization check tomake sure it runs HTTP 403 rather than redirecting unauthorized user to a login page.
+5. Yes go ahead and continue
+6. Ok everything looks good, this is strictly for futre purposes but I would like to change implement slightly i the way that it uses pytest and full suite checks. It seems to be taking a long time for test to be run, and for the sake of quicker development can we save full suite tests till then end or when issues are abhorently apparent, othersiwe only run tests associated with the feature that is being developed then run a full suite test at the end.
+7. Go ahead and implement conftest.py
+8. Go ahead and append this part of the conversation to prompts.md as well
+
+### Summary
+
+- **Outcome:** A new `candidates` app. Recruiters and Admins add and edit candidates (first name, last name, email, optional phone and notes). Everyone can browse the list, search it by name or email (live, through HTMX), and open a detail page, which has an empty Applications section until Phase 5. Hiring Managers, Interviewers and users without a role don't see Add or Edit, and get a 403 if they request those pages directly. Emails are stored in lowercase and are unique regardless of capitals, enforced by the database, and the form shows "A candidate with this email already exists." `seed` adds 10 sample candidates and stays idempotent. 110 tests pass (60 new); `ruff check` and `ruff format` are clean. All five Phase 2 acceptance criteria are ticked.
+- **Changes:**
+  - `candidates/` (new app): `models.py` (`Candidate` with `unique=True` on email, a `candidate_email_lowercase` check constraint, lowercasing in `clean()` and `save()`, and a `search()` queryset that matches every word against first name, last name or email); `forms.py` (`CandidateForm` with DaisyUI classes, marking invalid inputs with `input-error` and `aria-invalid`); `views.py` (thin class-based list, detail, create and update views; the list returns only the results partial for HTMX requests, but the full page for history restores, and sends `Vary: HX-Request`); `urls.py` (`candidates:list`, `create`, `detail`, `update`); `admin.py`; `migrations/0001_initial.py`; `templates/candidates/` (list, results partial, detail, form).
+  - `accounts/permissions.py` (new): `CANDIDATE_MANAGER_ROLES` and `can_manage_candidates(user)`, the first action rule and the pattern for later ones.
+  - `accounts/templatetags/accounts_tags.py`: a `can_manage_candidates` filter, so templates hide Add and Edit using the same rule.
+  - `accounts/management/commands/seed.py`: `SEED_CANDIDATES` (10 people, some without a phone or notes) and `seed_candidate()`, found by email and updated only where fields differ.
+  - `config/settings.py`, `config/urls.py`: register the app and mount it at `/candidates/`.
+  - `templates/partials/nav_links.html`: a Candidates link, marked current on any candidates page.
+  - `templates/icons/`: 9 Lucide icons copied from lucide-static v1.49.0 (search, user-plus, pencil, mail, phone, arrow-left, notebook-pen, inbox, save).
+  - Tests: `candidates/tests/test_models.py`, `test_forms.py`, `test_views.py`; `accounts/tests/test_permissions.py` (new); `accounts/tests/test_seed.py` (candidates added to the idempotency snapshot, plus creation and repair tests).
+  - `CLAUDE.md`, `docs/TESTING.md`, `README.md`: document `accounts.permissions` and the new filter, and update the status, features and layout.
+  - `plans/applicant-tracking-system.md`: Phase 2 criteria ticked.
+- **TDD:** The plan's two candidates, each red on an assertion and then green:
+  1. *Email stored lowercase and unique regardless of case.* The test creates `Ann@X.com`, checks it's stored as `ann@x.com`, then adds `ANN@x.COM` with `bulk_create` (which skips `save()`) and expects an `IntegrityError`. So only a real database rule can pass it. The fix: lowercase in `save()`, plus a check constraint that the email equals its lowercase, alongside `unique=True`.
+  2. *Only Recruiters and Admins can create or edit candidates.* A test parametrized over five roles, each making a GET and a POST to both Add and Edit. It checks the statuses (`[200, 302, 200, 302]` or four 403s) and that refused roles changed nothing. The fix: `RoleRequiredMixin` with `allowed_roles = CANDIDATE_MANAGER_ROLES` on both views.
+- **Decisions:** Archive fields (`is_archived`, `archived_at`) wait for Phase 9, as the plan says each phase adds only what it needs. Case-insensitive uniqueness uses "always lowercase" (a check constraint) plus `unique=True`, so the form's error lands on the email field. Search requires every word to match somewhere, so "ann lee" finds Ann Lee. The list is sorted by last name with no pagination yet. Saving redirects to the detail page with a success message. Delete stays in Phase 9. The agent regenerated `0001_initial` twice while building, as it hadn't been applied anywhere yet.
+- **Deviations:** None from the plan. At the RED step of TDD cycle 2, I asked for two things. First, prove that each role's run starts from an isolated database: the agent added a starting-state assertion, since pytest-django already rolls back each parametrized run. Second, make refusal an HTTP 403 rather than a redirect to login: this was already the case, because `RoleRequiredMixin` sets `raise_exception = True`, so Django raises `PermissionDenied`, and the test asserts exactly 403.
+- **Sideways:** Ruff's DJ012 rule flagged the model's method order (`save` and `get_absolute_url` must come before custom methods); fixed by moving `full_name` to the end. The first headless-Edge screenshots looked washed out because they caught the `animate-rise` fade mid-way; they were retaken with a virtual time budget. The screenshots also showed the duplicate-email input wasn't outlined in red, so the form now adds `input-error`. The first version built that class name with an f-string, which Tailwind couldn't see (`textarea-error` was missing from the built CSS), so the class names are now written out in full. The first attempt to write this log hung on a stray `cat` waiting for input; it was stopped before touching PROMPTS.md and redone. The dark theme's active nav link (from Phase 1) has low-contrast text; it was noted and left alone.
+- **Follow-up (prompts 6–8), faster test runs:** 110 tests pass in 0.53s, down from about 48s; Ruff is clean.
+  - `.claude/skills/implement/SKILL.md`: during a build, run only the tests for what the phase touches (its app, one file, or `-k`, plus tests of any shared module changed). Run the full suite once at the end, or earlier only when something points to a cross-app break, such as a failing import or migration, or a change to settings, `base.html`, `accounts.roles`, `RoleRequiredMixin` or `conftest.py`. The full suite must still be green before finishing.
+  - `.claude/skills/tdd/SKILL.md`: the regression check after each GREEN covers the changed app or module, not the full suite.
+  - `conftest.py`: an autouse `fast_password_hashing` fixture switches tests to Django's MD5 hasher. The agent traced the slowness to password hashing: the 5 seed tests took about 24s of the 48s, because the default hasher is deliberately slow. Real logins and the `seed` command still use the secure default.
+  - `docs/TESTING.md`: notes the fixture and why it exists.
+  - **Deviations:** None. I asked to change the skill, and the agent offered the hasher fix as a further speed-up, which I accepted.
+
 ## 2026-10-19 — Applicant Tracking System: Phase 1/14, Project skeleton, staff login and roles
 
 ### Prompts

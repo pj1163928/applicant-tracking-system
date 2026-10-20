@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
+from candidates.models import Candidate
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -33,8 +34,38 @@ SEED_USERS: tuple[SeedUser, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class SeedCandidate:
+    first_name: str
+    last_name: str
+    email: str  # the natural key; lowercase, as the model stores it
+    phone: str = ""
+    notes: str = ""
+
+
+# Phase 2. Some have no phone or notes; none has applied yet (applications arrive in Phase 5).
+SEED_CANDIDATES: tuple[SeedCandidate, ...] = (
+    SeedCandidate("Ann", "Lee", "ann.lee@example.com", "555-0101", "Strong Django portfolio."),
+    SeedCandidate("Ben", "Ortiz", "ben.ortiz@example.com", "555-0102"),
+    SeedCandidate(
+        "Chloe", "Nguyen", "chloe.nguyen@example.com", "", "Met at the spring career fair."
+    ),
+    SeedCandidate("Dev", "Sharma", "dev.sharma@example.com", "555-0104"),
+    SeedCandidate(
+        "Elena", "Rossi", "elena.rossi@example.com", "555-0105", "Prefers email contact."
+    ),
+    SeedCandidate("Farah", "Haddad", "farah.haddad@example.com"),
+    SeedCandidate("Gus", "Lee", "gus.lee@example.com", "555-0107"),
+    SeedCandidate(
+        "Hana", "Kim", "hana.kim@example.com", "555-0108", "Referred by a current engineer."
+    ),
+    SeedCandidate("Isaac", "Brown", "isaac.brown@example.com"),
+    SeedCandidate("Jade", "Okafor", "jade.okafor@example.com", "555-0110"),
+)
+
+
 class Command(BaseCommand):
-    help = "Create one demo user per role (and, in later phases, sample data)."
+    help = "Create one demo user per role, plus sample candidates."
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:
@@ -42,6 +73,10 @@ class Command(BaseCommand):
             user, created = seed_user(spec)
             action = "Created" if created else "Checked"
             self.stdout.write(f"{action} user '{user.username}'")
+        created = sum(seed_candidate(spec)[1] for spec in SEED_CANDIDATES)
+        self.stdout.write(
+            f"Candidates: {created} created, {len(SEED_CANDIDATES) - created} checked"
+        )
         self.stdout.write(
             self.style.SUCCESS(f"Seed complete. Password for every user: {SEED_PASSWORD}")
         )
@@ -72,3 +107,21 @@ def seed_user(spec: SeedUser) -> tuple[User, bool]:
     groups = [] if is_admin else [Group.objects.get(name=spec.role)]
     user.groups.set(groups)
     return user, created
+
+
+def seed_candidate(spec: SeedCandidate) -> tuple[Candidate, bool]:
+    """Create or update one seeded candidate, found by email; return (candidate, created)."""
+    wanted = {
+        "first_name": spec.first_name,
+        "last_name": spec.last_name,
+        "phone": spec.phone,
+        "notes": spec.notes,
+    }
+    candidate, created = Candidate.objects.get_or_create(email=spec.email, defaults=wanted)
+
+    changed = [field for field, value in wanted.items() if getattr(candidate, field) != value]
+    for field in changed:
+        setattr(candidate, field, wanted[field])
+    if changed:
+        candidate.save(update_fields=[*changed, "updated_at"])
+    return candidate, created

@@ -36,7 +36,9 @@ enough is built for a test to run:
    change it now if it describes the wrong thing. Stop for approval.
 4. Write only enough code to pass.
 5. Run the test again and confirm it passes. This is GREEN.
-6. Run the relevant existing tests to check for regressions.
+6. Run the relevant existing tests to check for regressions: the tests for
+   the app or module you just changed, not the full suite. The full suite
+   runs once at the end of the phase.
 7. Summarize briefly what made the test pass. Ask whether it implements the
    behavior or only satisfies the test. Stop before moving on.
 

@@ -4,8 +4,8 @@ CIDM 3312 Project #1. An internal, staff-only web app for tracking job
 applicants from **Applied** to **Hired**. Recruiters, hiring managers and
 interviewers sign in with accounts an Admin creates; candidates never log in.
 
-> **Status:** Phase 1 of 14 is complete: project setup, staff login, roles and
-> the responsive layout. See the [implementation plan](plans/applicant-tracking-system.md)
+> **Status:** Phases 1–2 of 14 are complete: project setup, staff login, roles,
+> the responsive layout, and candidates. See the [implementation plan](plans/applicant-tracking-system.md)
 > for what comes next.
 
 ## Features
@@ -18,11 +18,14 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
   view-only users.
 - A responsive layout. Large screens get a top navigation bar, and phones and tablets get
   a slide-in sidebar. It has light and dark themes and a skip-to-content link.
-- A `seed` command that creates one demo user per role.
+- Candidates: Recruiters and Admins add and edit them (name, email, optional phone and
+  notes). Emails are stored in lowercase and are unique regardless of capitals. Everyone
+  can browse the list, search it by name or email as they type, and open a candidate's page.
+- A `seed` command that creates one demo user per role and ten sample candidates.
 
 **Planned** (see the [PRD](prd/applicant-tracking-system.md))
 
-- Candidates, sources and job openings with skills.
+- Sources and job openings with skills.
 - One application per candidate per opening, moved through eight stages on a
   per-opening pipeline board, by menu or drag-and-drop, with no page reload.
 - A full stage history, with notes required for unusual moves.
@@ -89,7 +92,8 @@ Emails print to the console in development; tests capture them in memory.
 
 ```
 config/          Django settings, root URLs, and the {% icon %} template tag
-accounts/        roles, login, the role check (RoleRequiredMixin), and the seed command
+accounts/        roles, permission rules, login, the role check (RoleRequiredMixin), seed
+candidates/      candidates: model, search, list/detail/add/edit pages
 templates/       skeleton.html, base.html (staff layout), partials/, icons/
 assets/css/      Tailwind source CSS (themes and animations)
 static/          logo and built CSS (tailwind.css is generated and git-ignored)
@@ -98,7 +102,7 @@ prd/, plans/     product requirements and the phase-by-phase plan
 prototypes/      throwaway design prototypes (reference only)
 ```
 
-More apps (`candidates`, `openings`, `applications`, `notifications`) arrive
+More apps (`openings`, `applications`, `notifications`) arrive
 in later phases.
 
 ### Documentation

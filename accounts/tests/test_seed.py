@@ -2,8 +2,9 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 
-from accounts.management.commands.seed import SEED_PASSWORD
+from accounts.management.commands.seed import SEED_CANDIDATES, SEED_PASSWORD
 from accounts.roles import role_label
+from candidates.models import Candidate
 
 pytestmark = pytest.mark.django_db
 
@@ -16,10 +17,12 @@ EXPECTED_ROLES = {
 
 
 def snapshot():
-    return [
+    users = [
         (u.pk, u.username, u.password, u.first_name, u.is_superuser, role_label(u))
         for u in User.objects.order_by("username")
     ]
+    candidates = list(Candidate.objects.order_by("pk").values())
+    return users, candidates
 
 
 def test_seed_creates_one_user_per_role():
@@ -52,3 +55,28 @@ def test_seed_repairs_a_changed_seed_user():
     user.refresh_from_db()
     assert user.check_password(SEED_PASSWORD)
     assert role_label(user) == "Recruiter"
+
+
+def test_seed_adds_sample_candidates_without_applications():
+    call_command("seed")
+
+    emails = set(Candidate.objects.values_list("email", flat=True))
+    assert emails == {spec.email for spec in SEED_CANDIDATES}
+    assert len(emails) >= 10
+    assert all(email == email.lower() for email in emails)
+    # Some candidates leave the optional fields blank.
+    assert Candidate.objects.filter(phone="").exists()
+    assert Candidate.objects.filter(notes="").exists()
+
+
+def test_seed_repairs_a_changed_seed_candidate_without_duplicating_it():
+    call_command("seed")
+    ann = Candidate.objects.get(email="ann.lee@example.com")
+    ann.last_name = "Changed"
+    ann.save()
+
+    call_command("seed")
+
+    ann.refresh_from_db()
+    assert ann.last_name == "Lee"
+    assert Candidate.objects.count() == len(SEED_CANDIDATES)

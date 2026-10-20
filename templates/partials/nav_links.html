@@ -9,4 +9,11 @@ request.resolver_match.namespace == "<app>" (for example "candidates").
     {% icon "house" "size-5" %} Home
   </a>
 </li>
+{% with section=request.resolver_match.namespace %}
+<li>
+  <a href="{% url 'candidates:list' %}" class="{% if section == 'candidates' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'candidates' %} aria-current="page"{% endif %}>
+    {% icon "users-round" "size-5" %} Candidates
+  </a>
+</li>
+{% endwith %}
 {% endwith %}
