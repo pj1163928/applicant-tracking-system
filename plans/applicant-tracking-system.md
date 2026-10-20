@@ -137,12 +137,12 @@ The Openings list has a My openings / All toggle. It defaults to My openings for
 
 ### Acceptance criteria
 
-- [ ] Recruiters, Hiring Managers and Admins can create and edit openings, and Interviewers are refused.
-- [ ] The designated authority is required, and only active staff who aren't Interviewers can be picked.
-- [ ] Hiring Managers default to My openings, everyone else defaults to All, and the toggle works both ways.
-- [ ] "My openings" never hides anything: every opening is still reachable through All and by its URL.
-- [ ] Each opening shows its designated authority.
-- [ ] `seed` adds open and closed sample openings with different designated authorities.
+- [x] Recruiters, Hiring Managers and Admins can create and edit openings, and Interviewers are refused.
+- [x] The designated authority is required, and only active staff who aren't Interviewers can be picked.
+- [x] Hiring Managers default to My openings, everyone else defaults to All, and the toggle works both ways.
+- [x] "My openings" never hides anything: every opening is still reachable through All and by its URL.
+- [x] Each opening shows its designated authority.
+- [x] `seed` adds open and closed sample openings with different designated authorities.
 
 ### TDD
 

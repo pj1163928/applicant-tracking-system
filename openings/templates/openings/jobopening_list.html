@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Openings{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold sm:text-3xl">Openings</h1>
+    <p class="mt-1 text-sm opacity-70">Every role we're hiring for, and who makes its decisions.</p>
+  </div>
+  {% if user|can_manage_openings %}
+  <a href="{% url 'openings:create' %}" class="btn btn-primary gap-2" data-testid="opening-add">
+    {% icon "plus" "size-5" %} New opening
+  </a>
+  {% endif %}
+</div>
+
+<div id="opening-results" class="mt-6" aria-live="polite">
+  {% include "openings/partials/results.html" %}
+</div>
+{% endblock %}

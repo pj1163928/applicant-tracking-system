@@ -2,9 +2,15 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 
-from accounts.management.commands.seed import SEED_CANDIDATES, SEED_PASSWORD, SEED_SOURCES
+from accounts.management.commands.seed import (
+    SEED_CANDIDATES,
+    SEED_OPENINGS,
+    SEED_PASSWORD,
+    SEED_SOURCES,
+)
 from accounts.roles import role_label
 from candidates.models import Candidate, Source
+from openings.models import JobOpening
 
 pytestmark = pytest.mark.django_db
 
@@ -23,7 +29,8 @@ def snapshot():
     ]
     candidates = list(Candidate.objects.order_by("pk").values())
     sources = list(Source.objects.order_by("pk").values())
-    return users, candidates, sources
+    openings = list(JobOpening.objects.order_by("pk").values())
+    return users, candidates, sources, openings
 
 
 def test_seed_creates_one_user_per_role():
@@ -116,3 +123,48 @@ def test_seed_repairs_a_seeded_sources_category():
     call_command("seed")
 
     assert Source.objects.get(name="Indeed").category == Source.Category.JOB_BOARD
+
+
+def test_seed_adds_open_and_closed_openings_with_different_authorities():
+    call_command("seed")
+
+    openings = JobOpening.objects.select_related("designated_authority")
+    assert openings.count() == len(SEED_OPENINGS)
+    assert set(openings.values_list("status", flat=True)) == {"open", "closed"}
+    authorities = {o.designated_authority.username for o in openings}
+    assert authorities == {"manager", "recruiter", "admin"}
+    assert openings.filter(location="").exists()
+    # The Hiring Manager's "My openings" is a real subset of "All", with both statuses.
+    mine = openings.filter(designated_authority__username="manager")
+    assert 0 < mine.count() < openings.count()
+    assert set(mine.values_list("status", flat=True)) == {"open", "closed"}
+
+
+def test_rerunning_seed_keeps_staff_changes_to_opening_status_and_authority():
+    call_command("seed")
+    backend = JobOpening.objects.get(title="Backend Developer")
+    backend.status = JobOpening.Status.CLOSED  # staff close an open seeded opening
+    backend.designated_authority = User.objects.get(username="recruiter")
+    backend.save()
+    ux = JobOpening.objects.get(title="UX Researcher")
+    ux.status = JobOpening.Status.OPEN  # and reopen a closed one
+    ux.save()
+
+    call_command("seed")
+
+    assert JobOpening.objects.count() == len(SEED_OPENINGS)
+    backend.refresh_from_db()
+    assert backend.status == JobOpening.Status.CLOSED
+    assert backend.designated_authority.username == "recruiter"
+    assert JobOpening.objects.get(pk=ux.pk).status == JobOpening.Status.OPEN
+
+
+def test_seed_repairs_a_seeded_openings_details():
+    call_command("seed")
+    JobOpening.objects.filter(title="Data Engineer").update(description="Changed", location="")
+
+    call_command("seed")
+
+    data = JobOpening.objects.get(title="Data Engineer")
+    assert data.description == "Own the pipelines that feed our reporting warehouse."
+    assert data.location == "Dallas, TX"

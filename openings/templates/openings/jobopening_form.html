@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{% if opening %}Edit {{ form.initial.title }}{% else %}New opening{% endif %}{% endblock %}
+
+{% block content %}
+<a href="{% if opening %}{{ opening.get_absolute_url }}{% else %}{% url 'openings:list' %}{% endif %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} {% if opening %}Back to {{ form.initial.title }}{% else %}All openings{% endif %}
+</a>
+
+<div class="card mx-auto mt-4 max-w-2xl border border-base-300 bg-base-100 shadow-sm">
+  <form method="post" class="card-body gap-4" novalidate>
+    {% csrf_token %}
+    <h1 class="text-2xl font-bold">{% if opening %}Edit {{ form.initial.title }}{% else %}New opening{% endif %}</h1>
+
+    {% if form.non_field_errors %}
+    <div role="alert" class="alert alert-error alert-soft text-sm">
+      {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <fieldset class="fieldset grid gap-x-4 gap-y-3 sm:grid-cols-2">
+      {% for field in form %}
+      <div class="{% if field.name == 'title' or field.name == 'description' %}sm:col-span-2{% endif %}">
+        <label class="fieldset-legend pt-0" for="{{ field.id_for_label }}">
+          {{ field.label }}{% if not field.field.required %} <span class="font-normal opacity-60">(optional)</span>{% endif %}
+        </label>
+        {{ field }}
+        {% if field.errors %}
+        {% for error in field.errors %}<p class="mt-1 text-sm text-error" data-testid="error-{{ field.name }}">{{ error }}</p>{% endfor %}
+        {% elif field.help_text %}
+        <p class="label mt-1 whitespace-normal">{{ field.help_text }}</p>
+        {% endif %}
+      </div>
+      {% if opening and field.name == 'status' %}
+      <div data-testid="authority-readonly">
+        <p class="fieldset-legend pt-0">Designated authority</p>
+        <div class="flex min-h-10 items-center">{% include "openings/partials/authority.html" %}</div>
+        <p class="label mt-1 whitespace-normal">Set when the opening was created. It can't be changed here.</p>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </fieldset>
+
+    <div class="card-actions mt-2 justify-end">
+      <a href="{% if opening %}{{ opening.get_absolute_url }}{% else %}{% url 'openings:list' %}{% endif %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2">
+        {% if opening %}{% icon "save" "size-5" %} Save changes{% else %}{% icon "plus" "size-5" %} Create opening{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

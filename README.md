@@ -4,8 +4,8 @@ CIDM 3312 Project #1. An internal, staff-only web app for tracking job
 applicants from **Applied** to **Hired**. Recruiters, hiring managers and
 interviewers sign in with accounts an Admin creates; candidates never log in.
 
-> **Status:** Phases 1–3 of 14 are complete: project setup, staff login, roles,
-> the responsive layout, candidates and sources. See the [implementation plan](plans/applicant-tracking-system.md)
+> **Status:** Phases 1–4 of 14 are complete: project setup, staff login, roles,
+> the responsive layout, candidates, sources and job openings. See the [implementation plan](plans/applicant-tracking-system.md)
 > for what comes next.
 
 ## Features
@@ -25,12 +25,18 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
   Company website, Job board, Referral or Other), rename it, and retire or reactivate it
   without a page reload. Names are unique regardless of capitals, and sources are never
   deleted. Everyone else sees the list read-only.
-- A `seed` command that creates one demo user per role, ten sample candidates and six
-  sample sources (one of them retired).
+- Job openings: Recruiters, Hiring Managers and Admins create and edit them (title,
+  department, optional location, description, status). Every opening has a required
+  **designated authority**, chosen from active Admins, Recruiters and Hiring Managers.
+  The Openings list has **My openings / All** tabs (Hiring Managers start on My openings,
+  everyone else on All) and labels each opening with its authority.
+- A `seed` command that creates one demo user per role, ten sample candidates, six
+  sample sources (one of them retired) and six openings (open and closed, split across
+  three designated authorities).
 
 **Planned** (see the [PRD](prd/applicant-tracking-system.md))
 
-- Job openings with skills.
+- Skills on openings.
 - One application per candidate per opening, moved through eight stages on a
   per-opening pipeline board, by menu or drag-and-drop, with no page reload.
 - A full stage history, with notes required for unusual moves.
@@ -96,9 +102,10 @@ Emails print to the console in development; tests capture them in memory.
 ### Project layout
 
 ```
-config/          Django settings, root URLs, the {% icon %} tag, shared form styling
+config/          Django settings, root URLs, the {% icon %} tag, shared form and HTMX helpers
 accounts/        roles, permission rules, login, the role check (RoleRequiredMixin), seed
 candidates/      candidates (search, list/detail/add/edit) and sources (/sources/)
+openings/        job openings (My openings / All list, detail, create/edit)
 templates/       skeleton.html, base.html (staff layout), partials/, icons/
 assets/css/      Tailwind source CSS (themes and animations)
 static/          logo and built CSS (tailwind.css is generated and git-ignored)
@@ -107,7 +114,7 @@ prd/, plans/     product requirements and the phase-by-phase plan
 prototypes/      throwaway design prototypes (reference only)
 ```
 
-More apps (`openings`, `applications`, `notifications`) arrive
+More apps (`applications`, `notifications`) arrive
 in later phases.
 
 ### Documentation

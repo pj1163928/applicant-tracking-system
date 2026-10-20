@@ -1,0 +1,61 @@
+{% comment %}
+The My openings / All tabs and the openings they show. Rendered inside the list
+page, and on its own when an HTMX tab click swaps it into #opening-results.
+{% endcomment %}
+{% url 'openings:list' as list_url %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <div role="tablist" class="tabs tabs-box w-fit bg-base-100 shadow-sm" aria-label="Which openings to show">
+    {% for value, label, count in tabs %}
+    <a role="tab" href="{{ list_url }}?show={{ value }}"
+       hx-get="{{ list_url }}?show={{ value }}" hx-target="#opening-results" hx-push-url="true"
+       class="tab gap-2 transition-colors motion-reduce:transition-none{% if scope == value %} tab-active{% endif %}"
+       aria-selected="{% if scope == value %}true{% else %}false{% endif %}" data-testid="scope-{{ value }}">
+      {{ label }} <span class="badge badge-sm{% if scope == value %} badge-primary{% endif %}">{{ count }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <p class="text-sm opacity-70" data-testid="result-count">
+    {% if scope == MINE %}
+    Showing {{ openings|length }} of {{ all_count }} opening{{ all_count|pluralize }} ·
+    <a href="{{ list_url }}?show={{ ALL }}" hx-get="{{ list_url }}?show={{ ALL }}" hx-target="#opening-results" hx-push-url="true" class="link font-medium" data-testid="show-all">Show all</a>
+    {% else %}
+    {{ all_count }} opening{{ all_count|pluralize }}
+    {% endif %}
+  </p>
+</div>
+
+{% if openings %}
+<ul class="mt-4 divide-y divide-base-300 rounded-box border border-base-300 bg-base-100 shadow-sm" data-testid="opening-list">
+  {% for opening in openings %}
+  <li class="flex flex-col gap-3 p-4 transition-colors hover:bg-base-200/60 motion-reduce:transition-none sm:flex-row sm:items-center sm:gap-4" data-testid="opening-row">
+    <div class="flex min-w-0 flex-1 items-start gap-3">
+      <div class="grid size-10 shrink-0 place-items-center rounded-box {% if opening.is_open %}bg-primary/10 text-primary{% else %}bg-base-300/60 text-base-content/60{% endif %}" aria-hidden="true">
+        {% icon "briefcase-business" "size-5" %}
+      </div>
+      <div class="min-w-0">
+        <a href="{{ opening.get_absolute_url }}" class="link link-hover font-semibold{% if not opening.is_open %} opacity-80{% endif %}">{{ opening.title }}</a>
+        <p class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm opacity-70">
+          <span class="inline-flex items-center gap-1">{% icon "building-2" "size-3.5" %} {{ opening.department }}</span>
+          {% if opening.location %}<span class="inline-flex items-center gap-1">{% icon "map-pin" "size-3.5" %} {{ opening.location }}</span>{% endif %}
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center justify-between gap-4 pl-13 sm:w-72 sm:shrink-0 sm:pl-0">
+      {% include "openings/partials/authority.html" %}
+      {% include "openings/partials/status_badge.html" %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="mt-4 rounded-box border border-dashed border-base-300 bg-base-100 p-8 text-center" data-testid="no-openings">
+  {% icon "inbox" "mx-auto size-8 opacity-50" %}
+  {% if scope == MINE %}
+  <p class="mt-2 font-semibold">You aren't the designated authority for any openings.</p>
+  <p class="text-sm opacity-70">Every opening is still listed under <a href="{{ list_url }}?show={{ ALL }}" hx-get="{{ list_url }}?show={{ ALL }}" hx-target="#opening-results" hx-push-url="true" class="link font-medium">All</a>.</p>
+  {% else %}
+  <p class="mt-2 font-semibold">No openings yet.</p>
+  <p class="text-sm opacity-70">Openings you create will show up here.</p>
+  {% endif %}
+</div>
+{% endif %}

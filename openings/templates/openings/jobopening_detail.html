@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}{{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'openings:list' %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} All openings
+</a>
+
+<section class="card mt-4 overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-linear-to-r from-primary to-secondary" aria-hidden="true"></div>
+  <div class="card-body gap-6">
+    <div class="flex flex-wrap items-start gap-4">
+      <div class="hidden size-14 shrink-0 place-items-center rounded-box sm:grid {% if opening.is_open %}bg-primary/10 text-primary{% else %}bg-base-300/60 text-base-content/60{% endif %}" aria-hidden="true">
+        {% icon "briefcase-business" "size-7" %}
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-2xl font-bold break-words sm:text-3xl">{{ opening.title }}</h1>
+          {% include "openings/partials/status_badge.html" %}
+        </div>
+        <p class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm opacity-70">
+          <span class="inline-flex items-center gap-1.5">{% icon "building-2" "size-4" %} {{ opening.department }}</span>
+          <span class="inline-flex items-center gap-1.5">{% icon "map-pin" "size-4" %} {{ opening.location|default:"No location given" }}</span>
+        </p>
+      </div>
+      {% if user|can_manage_openings %}
+      <a href="{% url 'openings:update' opening.pk %}" class="btn btn-outline gap-2" data-testid="opening-edit">
+        {% icon "pencil" "size-4" %} Edit
+      </a>
+      {% endif %}
+    </div>
+
+    <div class="rounded-box bg-base-200/60 p-4" data-testid="authority-panel">
+      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        {% icon "user-check" "size-4" %} Designated authority
+      </h2>
+      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+      <p class="mt-2 text-sm opacity-70">
+        {% if opening.designated_authority == user %}You make this opening's offer and closure decisions.{% else %}Makes this opening's offer and closure decisions.{% endif %}
+      </p>
+    </div>
+
+    <div>
+      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        {% icon "notebook-pen" "size-4" %} Description
+      </h2>
+      <p class="mt-1 whitespace-pre-line">{{ opening.description }}</p>
+    </div>
+
+    <p class="text-xs opacity-60">Created {{ opening.created_at|date:"M j, Y" }} · Updated {{ opening.updated_at|date:"M j, Y" }}</p>
+  </div>
+</section>
+{% endblock %}

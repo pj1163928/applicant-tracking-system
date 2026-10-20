@@ -1,0 +1,6 @@
+{% comment %}An opening's status. Expects `opening`.{% endcomment %}
+{% if opening.is_open %}
+<span class="badge badge-sm badge-success badge-soft gap-1.5 whitespace-nowrap" data-testid="status-open"><span class="status status-success" aria-hidden="true"></span>Open</span>
+{% else %}
+<span class="badge badge-sm badge-ghost gap-1.5 whitespace-nowrap" data-testid="status-closed"><span class="status" aria-hidden="true"></span>Closed</span>
+{% endif %}

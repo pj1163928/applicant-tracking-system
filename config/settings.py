@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "django_tailwind_cli",
     "accounts",
     "candidates",
+    "openings",
 ]
 
 MIDDLEWARE = [

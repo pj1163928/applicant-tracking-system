@@ -1,0 +1,17 @@
+{% load accounts_tags %}
+{% comment %}
+An opening's designated authority: initials, name and role, with a "you" badge
+for the signed-in user. Expects `opening`.
+{% endcomment %}
+{% with authority=opening.designated_authority %}
+<span class="inline-flex min-w-0 items-center gap-2" data-testid="authority">
+  {% include "partials/avatar.html" with user=authority size="w-7" text="text-[0.65rem]" %}
+  <span class="min-w-0 leading-tight">
+    <span class="flex items-center gap-1.5 text-sm font-medium">
+      <span class="truncate">{{ authority.get_full_name|default:authority.username }}</span>
+      {% if authority == user %}<span class="badge badge-xs badge-primary" data-testid="authority-you">you</span>{% endif %}
+    </span>
+    <span class="block text-xs opacity-60">{{ authority|role_label }}</span>
+  </span>
+</span>
+{% endwith %}

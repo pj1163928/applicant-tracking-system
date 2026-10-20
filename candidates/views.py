@@ -11,14 +11,7 @@ from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import CANDIDATE_MANAGER_ROLES, SOURCE_MANAGER_ROLES
 from candidates.forms import CandidateForm, SourceForm, SourceRenameForm
 from candidates.models import Candidate, Source
-
-
-def is_htmx_partial(request) -> bool:
-    """True for an HTMX request that wants a fragment, not a history restore of the full page."""
-    return (
-        request.headers.get("HX-Request") == "true"
-        and request.headers.get("HX-History-Restore-Request") != "true"
-    )
+from config.htmx import is_htmx_partial
 
 
 class CandidateListView(ListView):

@@ -72,6 +72,10 @@ To run one test across roles, parametrize on the fixture name and use
   that a re-run keeps their change and adds no duplicate.
 - **Case-insensitive uniqueness**: prove the database refuses the clash with
   `bulk_create`, which skips `save()` and form validation.
+- **Choice fields that encode a rule** (such as the designated authority):
+  post a pk that the dropdown never offers (an Interviewer, a user without a
+  role, an inactive user) and assert that the form fails validation and
+  nothing is saved. Hiding an option is not the safeguard; the queryset is.
 
 ## TDD
 

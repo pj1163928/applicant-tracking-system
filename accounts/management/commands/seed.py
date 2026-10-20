@@ -13,6 +13,7 @@ from django.db import transaction
 
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
 from candidates.models import Candidate, Source
+from openings.models import JobOpening
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -82,8 +83,67 @@ SEED_SOURCES: tuple[SeedSource, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class SeedOpening:
+    title: str  # (title, department) is the natural key
+    department: str
+    authority: str  # a seeded username; applied only when seed creates the opening
+    description: str
+    location: str = ""
+    status: str = JobOpening.Status.OPEN  # applied only when seed creates the opening
+
+
+# Phase 4. Open and closed openings, split across three designated authorities, so
+# the manager's "My openings" differs from "All". One has no location.
+SEED_OPENINGS: tuple[SeedOpening, ...] = (
+    SeedOpening(
+        "Backend Developer",
+        "Engineering",
+        "manager",
+        "Build and maintain our Django services and APIs.",
+        "Remote",
+    ),
+    SeedOpening(
+        "QA Analyst",
+        "Engineering",
+        "manager",
+        "Plan and automate testing across our web products.",
+        "Amarillo, TX",
+    ),
+    SeedOpening(
+        "UX Researcher",
+        "Design",
+        "manager",
+        "Run interviews and usability studies with our users.",
+        "Remote",
+        JobOpening.Status.CLOSED,
+    ),
+    SeedOpening(
+        "Data Engineer",
+        "Data",
+        "recruiter",
+        "Own the pipelines that feed our reporting warehouse.",
+        "Dallas, TX",
+    ),
+    SeedOpening(
+        "Support Specialist",
+        "Operations",
+        "recruiter",
+        "Help customers by phone and email, and log what they need.",
+        status=JobOpening.Status.CLOSED,
+    ),
+    SeedOpening(
+        "Product Designer",
+        "Design",
+        "admin",
+        "Design clear, accessible screens from first sketch to release.",
+        "Austin, TX",
+    ),
+)
+
+
 class Command(BaseCommand):
-    help = "Create one demo user per role, plus sample candidates and sources."
+    help = "Create one demo user per role, plus sample candidates, sources and openings."
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:
@@ -97,6 +157,8 @@ class Command(BaseCommand):
         )
         created = sum(seed_source(spec)[1] for spec in SEED_SOURCES)
         self.stdout.write(f"Sources: {created} created, {len(SEED_SOURCES) - created} checked")
+        created = sum(seed_opening(spec)[1] for spec in SEED_OPENINGS)
+        self.stdout.write(f"Openings: {created} created, {len(SEED_OPENINGS) - created} checked")
         self.stdout.write(
             self.style.SUCCESS(f"Seed complete. Password for every user: {SEED_PASSWORD}")
         )
@@ -164,3 +226,31 @@ def seed_source(spec: SeedSource) -> tuple[Source, bool]:
         source.category = spec.category
         source.save(update_fields=["category"])
     return source, False
+
+
+def seed_opening(spec: SeedOpening) -> tuple[JobOpening, bool]:
+    """Create or update one seeded opening, found by (title, department); return (opening, created).
+
+    Status and designated authority are set only when seed creates the
+    opening, because staff close openings and (later) reassign them on
+    purpose. Drifted details (location, description) are repaired.
+    """
+    wanted = {"location": spec.location, "description": spec.description}
+    opening, created = JobOpening.objects.get_or_create(
+        title=spec.title,
+        department=spec.department,
+        defaults=wanted
+        | {
+            "status": spec.status,
+            "designated_authority": User.objects.get(username=spec.authority),
+        },
+    )
+    if created:
+        return opening, True
+
+    changed = [field for field, value in wanted.items() if getattr(opening, field) != value]
+    for field in changed:
+        setattr(opening, field, wanted[field])
+    if changed:
+        opening.save(update_fields=[*changed, "updated_at"])
+    return opening, False
