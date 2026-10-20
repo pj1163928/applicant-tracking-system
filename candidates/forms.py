@@ -1,10 +1,13 @@
 from django import forms
 
-from candidates.models import Candidate
+from candidates.models import Candidate, Source
+from config.forms import DaisyUIFormMixin
 
 
-class CandidateForm(forms.ModelForm):
+class CandidateForm(DaisyUIFormMixin, forms.ModelForm):
     """Add or edit a candidate's contact details."""
+
+    CLASSES = {"notes": ("textarea w-full", "textarea-error")}
 
     class Meta:
         model = Candidate
@@ -21,20 +24,30 @@ class CandidateForm(forms.ModelForm):
             "notes": "Anything useful about this candidate.",
         }
 
-    # DaisyUI classes (normal, invalid), written out in full so Tailwind finds them.
-    CLASSES = {"notes": ("textarea w-full", "textarea-error")}
-    DEFAULT_CLASSES = ("input w-full", "input-error")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for name, field in self.fields.items():
-            field.widget.attrs["class"] = self.CLASSES.get(name, self.DEFAULT_CLASSES)[0]
+SOURCE_NAME_HELP = "Must be unique, ignoring capital letters."
 
-    def full_clean(self) -> None:
-        """Validate, then mark each invalid input in red and for screen readers."""
-        super().full_clean()
-        for name in self.errors:
-            if name in self.fields:
-                attrs = self.fields[name].widget.attrs
-                attrs["class"] += " " + self.CLASSES.get(name, self.DEFAULT_CLASSES)[1]
-                attrs["aria-invalid"] = "true"
+
+class SourceForm(DaisyUIFormMixin, forms.ModelForm):
+    """Add a source: a name and one of the four categories."""
+
+    CLASSES = {"category": ("select w-full", "select-error")}
+
+    class Meta:
+        model = Source
+        fields = ["name", "category"]
+        widgets = {"name": forms.TextInput(attrs={"autocomplete": "off"})}
+        help_texts = {
+            "name": SOURCE_NAME_HELP,
+            "category": "Used to group sources when comparing channels.",
+        }
+
+
+class SourceRenameForm(DaisyUIFormMixin, forms.ModelForm):
+    """Rename a source to fix a typo. The category stays as it was created."""
+
+    class Meta:
+        model = Source
+        fields = ["name"]
+        widgets = {"name": forms.TextInput(attrs={"autocomplete": "off"})}
+        help_texts = {"name": SOURCE_NAME_HELP}

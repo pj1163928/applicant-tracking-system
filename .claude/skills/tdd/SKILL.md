@@ -39,10 +39,11 @@ enough is built for a test to run:
 6. Run the relevant existing tests to check for regressions: the tests for
    the app or module you just changed, not the full suite. The full suite
    runs once at the end of the phase.
-7. Summarize briefly what made the test pass. Ask whether it implements the
-   behavior or only satisfies the test. Stop before moving on.
+7. Summarize briefly what made the test pass, and say whether it implements
+   the behavior or only satisfies the test. Do not stop: move straight on.
 
-Then move to the next behavior.
+Then move to the next behavior. The only stop in each cycle is the RED
+approval in step 3.
 
 ## Rules
 

@@ -67,7 +67,11 @@ To run one test across roles, parametrize on the fixture name and use
 - **Dates**: never call `date.today()` inside a rule. Pass "today" in as an
   argument so tests can choose it.
 - **`seed`**: call `call_command("seed")` twice and check that the second run
-  changes nothing (same pks and same field values).
+  changes nothing (same pks and same field values). When staff can change a
+  seeded record's state on purpose (retiring a source, for example), also test
+  that a re-run keeps their change and adds no duplicate.
+- **Case-insensitive uniqueness**: prove the database refuses the clash with
+  `bulk_create`, which skips `save()` and form validation.
 
 ## TDD
 

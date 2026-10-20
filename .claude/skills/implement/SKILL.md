@@ -68,8 +68,9 @@ include them in this message. The approval it asks for is this step's stop.
 
 **Without TDD:** stop for approval.
 
-After approval, the only further stops are the ones the `tdd` cycles require
-and any question that is genuinely the user's call.
+After approval, the only further stops are each `tdd` cycle's RED approval
+(GREEN is summarized, then the build carries on) and any question that is
+genuinely the user's call.
 
 ## 5. Build
 

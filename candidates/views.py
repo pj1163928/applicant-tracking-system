@@ -1,11 +1,16 @@
+from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
+from django.shortcuts import redirect, render
+from django.urls import reverse_lazy
 from django.utils.cache import patch_vary_headers
-from django.views.generic import CreateView, DetailView, ListView, UpdateView
+from django.views import View
+from django.views.generic import CreateView, DetailView, ListView, TemplateView, UpdateView
+from django.views.generic.detail import SingleObjectMixin
 
 from accounts.mixins import RoleRequiredMixin
-from accounts.permissions import CANDIDATE_MANAGER_ROLES
-from candidates.forms import CandidateForm
-from candidates.models import Candidate
+from accounts.permissions import CANDIDATE_MANAGER_ROLES, SOURCE_MANAGER_ROLES
+from candidates.forms import CandidateForm, SourceForm, SourceRenameForm
+from candidates.models import Candidate, Source
 
 
 def is_htmx_partial(request) -> bool:
@@ -64,3 +69,77 @@ class CandidateUpdateView(RoleRequiredMixin, SuccessMessageMixin, UpdateView):
     model = Candidate
     form_class = CandidateForm
     success_message = "Saved changes to %(first_name)s %(last_name)s."
+
+
+def source_table_context() -> dict[str, list[Source]]:
+    """The active and retired sources, as the sources table shows them."""
+    sources = list(Source.objects.all())
+    return {
+        "active_sources": [s for s in sources if s.is_active],
+        "retired_sources": [s for s in sources if not s.is_active],
+    }
+
+
+class SourceListView(TemplateView):
+    """Every source, active ones first. Everyone may look; only managers see the actions."""
+
+    template_name = "candidates/source_list.html"
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | source_table_context()
+
+
+class SourceCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):
+    """Add a source. Admins and Recruiters only; everyone else gets 403."""
+
+    allowed_roles = SOURCE_MANAGER_ROLES
+    model = Source
+    form_class = SourceForm
+    success_url = reverse_lazy("sources:list")
+    success_message = "Added %(name)s."
+
+
+class SourceRenameView(RoleRequiredMixin, SuccessMessageMixin, UpdateView):
+    """Rename a source. Admins and Recruiters only; everyone else gets 403."""
+
+    allowed_roles = SOURCE_MANAGER_ROLES
+    model = Source
+    form_class = SourceRenameForm
+    success_url = reverse_lazy("sources:list")
+    success_message = "Renamed the source to %(name)s."
+
+    def get_object(self, queryset=None) -> Source:
+        source = super().get_object(queryset)
+        # A failed rename copies the typed name onto the object; keep the saved one for headings.
+        self.saved_name = source.name
+        return source
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | {"saved_name": self.saved_name}
+
+
+class SourceActivationView(RoleRequiredMixin, SingleObjectMixin, View):
+    """Retire a source, or reactivate it when ``activate`` is True. POST only; never deletes.
+
+    HTMX requests get the refreshed sources table back; others are redirected
+    to the list with a message.
+    """
+
+    allowed_roles = SOURCE_MANAGER_ROLES
+    model = Source
+    http_method_names = ["post"]
+    activate = False
+
+    def post(self, request, *args, **kwargs):
+        source = self.get_object()
+        if self.activate:
+            source.reactivate()
+            status = f"Reactivated {source.name}. New applications can pick it again."
+        else:
+            source.retire()
+            status = f"Retired {source.name}. Old applications keep it; new ones can't pick it."
+        if is_htmx_partial(request):
+            context = source_table_context() | {"status": status}
+            return render(request, "candidates/partials/source_table.html", context)
+        messages.success(request, status)
+        return redirect("sources:list")

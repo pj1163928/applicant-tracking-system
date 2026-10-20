@@ -12,7 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
-from candidates.models import Candidate
+from candidates.models import Candidate, Source
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -64,8 +64,26 @@ SEED_CANDIDATES: tuple[SeedCandidate, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class SeedSource:
+    name: str  # the natural key, matched ignoring capitals as the database does
+    category: str
+    is_active: bool = True  # applied only when seed creates the source
+
+
+# Phase 3. Every category, plus one retired source to show the retired state.
+SEED_SOURCES: tuple[SeedSource, ...] = (
+    SeedSource("Company careers page", Source.Category.COMPANY_WEBSITE),
+    SeedSource("LinkedIn Jobs", Source.Category.JOB_BOARD),
+    SeedSource("Indeed", Source.Category.JOB_BOARD),
+    SeedSource("Employee referral", Source.Category.REFERRAL),
+    SeedSource("Career fair", Source.Category.OTHER),
+    SeedSource("Monster", Source.Category.JOB_BOARD, is_active=False),
+)
+
+
 class Command(BaseCommand):
-    help = "Create one demo user per role, plus sample candidates."
+    help = "Create one demo user per role, plus sample candidates and sources."
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:
@@ -77,6 +95,8 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Candidates: {created} created, {len(SEED_CANDIDATES) - created} checked"
         )
+        created = sum(seed_source(spec)[1] for spec in SEED_SOURCES)
+        self.stdout.write(f"Sources: {created} created, {len(SEED_SOURCES) - created} checked")
         self.stdout.write(
             self.style.SUCCESS(f"Seed complete. Password for every user: {SEED_PASSWORD}")
         )
@@ -125,3 +145,22 @@ def seed_candidate(spec: SeedCandidate) -> tuple[Candidate, bool]:
     if changed:
         candidate.save(update_fields=[*changed, "updated_at"])
     return candidate, created
+
+
+def seed_source(spec: SeedSource) -> tuple[Source, bool]:
+    """Create one seeded source if no source has its name (ignoring case); return (source, created).
+
+    An existing source keeps its name's capitals and its active or retired
+    state, because staff may have renamed or retired it on purpose. Only a
+    drifted category is repaired, since the app can't change categories.
+    """
+    source = Source.objects.filter(name__iexact=spec.name).first()
+    if source is None:
+        source = Source.objects.create(
+            name=spec.name, category=spec.category, is_active=spec.is_active
+        )
+        return source, True
+    if source.category != spec.category:
+        source.category = spec.category
+        source.save(update_fields=["category"])
+    return source, False

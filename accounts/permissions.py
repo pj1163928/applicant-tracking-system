@@ -14,3 +14,15 @@ CANDIDATE_MANAGER_ROLES: tuple[str, ...] = (RECRUITER,)
 def can_manage_candidates(user: AnyUser) -> bool:
     """Return True if the user may add or edit candidates: an Admin or a Recruiter."""
     return has_role(user, *CANDIDATE_MANAGER_ROLES)
+
+
+# Roles that add, rename, retire and reactivate sources. Admins always pass role checks.
+SOURCE_MANAGER_ROLES: tuple[str, ...] = (RECRUITER,)
+
+
+def can_manage_sources(user: AnyUser) -> bool:
+    """Return True if the user may add, rename, retire or reactivate sources.
+
+    That is an Admin or a Recruiter.
+    """
+    return has_role(user, *SOURCE_MANAGER_ROLES)

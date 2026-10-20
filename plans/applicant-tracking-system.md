@@ -111,11 +111,11 @@ A sources page where Recruiters and Admins add a source with a name and category
 
 ### Acceptance criteria
 
-- [ ] Recruiters and Admins can add, rename and retire sources, and other roles are refused.
-- [ ] Source names are unique regardless of capital letters.
-- [ ] The category is one of Company website, Job board, Referral or Other.
-- [ ] No action deletes a source, and a source can be retired and reactivated.
-- [ ] `seed` adds sample sources in every category.
+- [x] Recruiters and Admins can add, rename and retire sources, and other roles are refused.
+- [x] Source names are unique regardless of capital letters.
+- [x] The category is one of Company website, Job board, Referral or Other.
+- [x] No action deletes a source, and a source can be retired and reactivated.
+- [x] `seed` adds sample sources in every category.
 
 ### TDD
 

@@ -1,7 +1,7 @@
 import pytest
 from django.contrib.auth.models import AnonymousUser
 
-from accounts.permissions import can_manage_candidates
+from accounts.permissions import can_manage_candidates, can_manage_sources
 
 pytestmark = pytest.mark.django_db
 
@@ -28,3 +28,24 @@ def test_inactive_recruiter_cannot_manage_candidates(recruiter):
 
 def test_anonymous_user_cannot_manage_candidates():
     assert can_manage_candidates(AnonymousUser()) is False
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "expected"),
+    [
+        ("admin", True),
+        ("recruiter", True),
+        ("hiring_manager", False),
+        ("interviewer", False),
+        ("no_role_user", False),
+    ],
+)
+def test_can_manage_sources_by_role(request, user_fixture, expected):
+    assert can_manage_sources(request.getfixturevalue(user_fixture)) is expected
+
+
+def test_inactive_or_anonymous_users_cannot_manage_sources(recruiter):
+    recruiter.is_active = False
+
+    assert can_manage_sources(recruiter) is False
+    assert can_manage_sources(AnonymousUser()) is False

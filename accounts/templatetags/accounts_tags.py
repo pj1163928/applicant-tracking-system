@@ -23,3 +23,9 @@ def can_make_changes(user: roles.AnyUser) -> bool:
 def can_manage_candidates(user: roles.AnyUser) -> bool:
     """Show candidate add and edit actions: ``{% if user|can_manage_candidates %}``."""
     return permissions.can_manage_candidates(user)
+
+
+@register.filter
+def can_manage_sources(user: roles.AnyUser) -> bool:
+    """Show source add, rename and retire actions: ``{% if user|can_manage_sources %}``."""
+    return permissions.can_manage_sources(user)

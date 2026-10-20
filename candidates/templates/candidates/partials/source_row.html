@@ -1,0 +1,40 @@
+{% load accounts_tags %}
+{% comment %}One source in the sources table. Expects `source`.{% endcomment %}
+<li class="list-row items-center transition-colors hover:bg-base-200/60 motion-reduce:transition-none" data-testid="source-row">
+  <div class="grid size-10 place-items-center rounded-box {% if source.category == 'company_website' %}bg-primary/10 text-primary{% elif source.category == 'job_board' %}bg-secondary/10 text-secondary{% elif source.category == 'referral' %}bg-accent/10 text-accent{% else %}bg-base-300/60 text-base-content/70{% endif %}{% if not source.is_active %} opacity-60{% endif %}" aria-hidden="true">
+    {% if source.category == 'company_website' %}{% icon "globe" "size-5" %}{% elif source.category == 'job_board' %}{% icon "newspaper" "size-5" %}{% elif source.category == 'referral' %}{% icon "handshake" "size-5" %}{% else %}{% icon "ellipsis" "size-5" %}{% endif %}
+  </div>
+
+  <div class="list-col-grow min-w-0">
+    <p class="truncate font-semibold{% if not source.is_active %} opacity-70{% endif %}">{{ source.name }}</p>
+    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm opacity-70">
+      {{ source.get_category_display }}
+      {% if not source.is_active %}<span class="badge badge-xs badge-outline opacity-80">Retired</span>{% endif %}
+    </p>
+  </div>
+
+  {% if user|can_manage_sources %}
+  <div class="flex items-center gap-1">
+    <a href="{% url 'sources:update' source.pk %}" class="btn btn-ghost btn-sm gap-1.5" data-testid="source-rename" aria-label="Rename {{ source.name }}">
+      {% icon "pencil" "size-4" %}<span class="hidden sm:inline">Rename</span>
+    </a>
+    {% if source.is_active %}
+    <form method="post" action="{% url 'sources:retire' source.pk %}"
+          hx-post="{% url 'sources:retire' source.pk %}" hx-target="#source-table" hx-swap="outerHTML">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-ghost btn-sm gap-1.5" data-testid="source-retire" aria-label="Retire {{ source.name }}">
+        {% icon "archive" "size-4" %}<span class="hidden sm:inline">Retire</span>
+      </button>
+    </form>
+    {% else %}
+    <form method="post" action="{% url 'sources:reactivate' source.pk %}"
+          hx-post="{% url 'sources:reactivate' source.pk %}" hx-target="#source-table" hx-swap="outerHTML">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-ghost btn-sm gap-1.5 text-success" data-testid="source-reactivate" aria-label="Reactivate {{ source.name }}">
+        {% icon "archive-restore" "size-4" %}<span class="hidden sm:inline">Reactivate</span>
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</li>

@@ -4,8 +4,8 @@ CIDM 3312 Project #1. An internal, staff-only web app for tracking job
 applicants from **Applied** to **Hired**. Recruiters, hiring managers and
 interviewers sign in with accounts an Admin creates; candidates never log in.
 
-> **Status:** Phases 1–2 of 14 are complete: project setup, staff login, roles,
-> the responsive layout, and candidates. See the [implementation plan](plans/applicant-tracking-system.md)
+> **Status:** Phases 1–3 of 14 are complete: project setup, staff login, roles,
+> the responsive layout, candidates and sources. See the [implementation plan](plans/applicant-tracking-system.md)
 > for what comes next.
 
 ## Features
@@ -21,11 +21,16 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
 - Candidates: Recruiters and Admins add and edit them (name, email, optional phone and
   notes). Emails are stored in lowercase and are unique regardless of capitals. Everyone
   can browse the list, search it by name or email as they type, and open a candidate's page.
-- A `seed` command that creates one demo user per role and ten sample candidates.
+- Sources: Recruiters and Admins add a source (a name and one of four categories:
+  Company website, Job board, Referral or Other), rename it, and retire or reactivate it
+  without a page reload. Names are unique regardless of capitals, and sources are never
+  deleted. Everyone else sees the list read-only.
+- A `seed` command that creates one demo user per role, ten sample candidates and six
+  sample sources (one of them retired).
 
 **Planned** (see the [PRD](prd/applicant-tracking-system.md))
 
-- Sources and job openings with skills.
+- Job openings with skills.
 - One application per candidate per opening, moved through eight stages on a
   per-opening pipeline board, by menu or drag-and-drop, with no page reload.
 - A full stage history, with notes required for unusual moves.
@@ -91,9 +96,9 @@ Emails print to the console in development; tests capture them in memory.
 ### Project layout
 
 ```
-config/          Django settings, root URLs, and the {% icon %} template tag
+config/          Django settings, root URLs, the {% icon %} tag, shared form styling
 accounts/        roles, permission rules, login, the role check (RoleRequiredMixin), seed
-candidates/      candidates: model, search, list/detail/add/edit pages
+candidates/      candidates (search, list/detail/add/edit) and sources (/sources/)
 templates/       skeleton.html, base.html (staff layout), partials/, icons/
 assets/css/      Tailwind source CSS (themes and animations)
 static/          logo and built CSS (tailwind.css is generated and git-ignored)

@@ -28,6 +28,41 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — Applicant Tracking System: Phase 3/14, Sources
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking system phase 3`.
+2. Ok one more test since we are seeding twice can e make a test to ensure that it does not duplicate sources, and that re-running it does not accidentally reactivate a source that an admin intentionally retired.
+3. This test looks good go ahead and move to next after greenlighting
+4. Ok this test looks good continue to developing, also from now on go ahead an move to next phase instead of moving to green, you can update implement if necessary.
+
+### Summary
+
+- **Outcome:** A `/sources/` page that every role can view. Recruiters and Admins add a source (a name plus one of four categories: Company website, Job board, Referral or Other), rename it, and retire or reactivate it. Retire and Reactivate swap the sources table in place through HTMX. Active sources are listed first, with retired ones in a dimmed section below. Hiring Managers, Interviewers and users without a role see the page read-only, with a note, and get a 403 if they request an action directly. Names are unique regardless of capitals, enforced by the database. The category is enforced by the form and a database check. No URL or admin action deletes a source. `seed` adds six sources in all four categories (one retired). A re-run creates nothing new and never undoes a deliberate retirement or reactivation. 168 tests pass (58 new); `ruff check` and `ruff format` are clean. All five Phase 3 acceptance criteria are ticked.
+- **Changes:**
+  - `candidates/models.py`: `SourceCategory` (also available as `Source.Category`), `SourceQuerySet` with `active()` and `retired()`, and `Source` with a unique constraint on `Lower("name")`, a category check constraint, case-insensitive name ordering, `retire()` / `reactivate()`, and a `validate_constraints()` override that puts the name-clash error on the name field.
+  - `candidates/migrations/0002_source.py` (new).
+  - `candidates/forms.py`: `SourceForm` (name and category) and `SourceRenameForm` (name only). `CandidateForm` now uses the shared mixin.
+  - `config/forms.py` (new): `DaisyUIFormMixin`, the widget-class and `aria-invalid` code moved out of `CandidateForm` so both forms share it.
+  - `candidates/views.py`: `SourceListView`, `SourceCreateView`, `SourceRenameView` (keeps the saved name for the heading when a rename fails), and `SourceActivationView` (POST only; returns the table partial for HTMX, or redirects with a message otherwise).
+  - `candidates/source_urls.py` (new, `app_name = "sources"`), mounted at `sources/` in `config/urls.py`.
+  - `candidates/templates/candidates/`: `source_list.html`, `source_form.html`, `partials/source_table.html`, `partials/source_row.html` (a category icon and colour per row; actions shrink to icons with `aria-label`s on phones).
+  - `candidates/admin.py`: `SourceAdmin` with `has_delete_permission` returning False.
+  - `accounts/permissions.py`, `accounts/templatetags/accounts_tags.py`: `SOURCE_MANAGER_ROLES`, `can_manage_sources()` and the matching filter.
+  - `accounts/management/commands/seed.py`: `SEED_SOURCES` and `seed_source()`. It finds a source by name ignoring case, sets `is_active` only when creating it, and repairs only the category.
+  - `templates/partials/nav_links.html`: a Sources link. `templates/icons/`: 8 Lucide icons from lucide-static v1.49.0 (signpost, plus, archive, archive-restore, globe, newspaper, handshake, ellipsis).
+  - Tests: `candidates/tests/test_source_models.py`, `test_source_forms.py`, `test_source_views.py` (new); `accounts/tests/test_permissions.py` and `test_seed.py` extended (sources added to the idempotency snapshot).
+  - `.claude/skills/tdd/SKILL.md`, `.claude/skills/implement/SKILL.md`: after GREEN, summarize and carry on; the only stop in each cycle is the RED approval (prompt 4).
+  - `CLAUDE.md`, `docs/TESTING.md`, `README.md`: the sources namespace, the new permission and filter, the form mixin, the seed rule about deliberate state changes, the `bulk_create` uniqueness test, and the updated status, features and layout.
+  - `plans/applicant-tracking-system.md`: Phase 3 criteria ticked.
+- **TDD:** The plan's two candidates, each red on an assertion and then green:
+  1. *Source names are unique regardless of case.* The test saves "LinkedIn", then uses `bulk_create` (which skips forms and `save()`) to insert "LinkedIn", "linkedin" and "LINKEDIN", expecting an `IntegrityError` each time. It was red with "DID NOT RAISE". The fix: a `UniqueConstraint(Lower("name"))`. Names keep the capitals they were typed with.
+  2. *Retired sources drop out of the active choices but still exist.* The test retires "Indeed" and checks that `active()` leaves it out, `all()` still has it with `is_active=False`, and reactivating brings it back. It was red because the placeholder `active()` returned everything. The fix: filter on `is_active=True`.
+- **Decisions:** Extra URLs beyond the plan's `/sources/` (`new/`, `<pk>/edit/`, `<pk>/retire/`, `<pk>/reactivate/`) under a `sources:` namespace, although Source lives in the `candidates` app. Renaming changes the name only: a source keeps the category it was added with, because the PRD's story is "rename to fix typos". Add and Rename use their own form pages, as candidates do; Retire and Reactivate use HTMX. No timestamps on Source, since the PRD lists none. The category is also checked in the database, matching the candidate email rule. The rename heading shows the saved name, because a failed form copies the typed name onto the object.
+- **Deviations:** At the brief I asked for an extra seed test: re-running must not duplicate sources or reactivate one an Admin retired. The agent pointed out that the seed's existing "repair drifted records" pattern would cause exactly that bug for sources. So `seed_source()` sets `is_active` only on creation and matches names ignoring case. The test also covers the reverse case (a reactivated seed source stays active) and a change of capitals. It was written before the seed code as an ordinary test, not a third TDD cycle, because a simple correct seed would have passed it with no meaningful red step. Remaining limit: a full rename of a seeded source (say "Indeed" → "Indeed.com") makes a re-run add a new "Indeed". At prompt 4, I asked for TDD to carry on after GREEN instead of stopping, and the agent updated both skills.
+- **Sideways:** The first `CheckConstraint` referred to `Category` from inside `Meta`, which Python's class scoping can't see (`NameError` during `makemigrations`). The choices moved to a module-level `SourceCategory`, with `Source.Category` kept as an alias. `0002_source.py` was regenerated twice before it was ever applied. Ruff flagged five long lines; most were in the generated migration and were fixed by `ruff format`, the rest by hand. Headless-Edge screenshots showed yellow "Retire" text and a yellow "Retired" badge with poor contrast in the light theme; both are now neutral. The 360px screenshots first looked cut off. Headless Edge won't lay out narrower than about 492px, so the phone checks were redone inside a 360px iframe, which showed the layout fits. In the dark theme, the blue Company website icon is dim, like the Phase 1 nav contrast issue; noted and left alone.
+
 ## 2026-10-19 — Applicant Tracking System: Phase 2/14, Candidates
 
 ### Prompts

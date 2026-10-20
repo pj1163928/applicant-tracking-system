@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Sources{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold sm:text-3xl">Sources</h1>
+    <p class="mt-1 text-sm opacity-70">Where applicants come from. Retired sources stay on old applications, but new ones can't pick them.</p>
+  </div>
+  {% if user|can_manage_sources %}
+  <a href="{% url 'sources:create' %}" class="btn btn-primary gap-2" data-testid="source-add">
+    {% icon "plus" "size-5" %} Add source
+  </a>
+  {% endif %}
+</div>
+
+{% if not user|can_manage_sources %}
+<div role="note" class="alert alert-info alert-soft mt-6" data-testid="sources-read-only">
+  {% icon "eye" "size-5" %}
+  <span>You can view sources. Only Recruiters and Admins can add, rename or retire them.</span>
+</div>
+{% endif %}
+
+<div class="mt-6">
+  {% include "candidates/partials/source_table.html" %}
+</div>
+{% endblock %}

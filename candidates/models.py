@@ -1,5 +1,6 @@
-"""Candidates: the people staff track. Candidates never log in."""
+"""Candidates (the people staff track, who never log in) and the sources they apply through."""
 
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Lower
@@ -72,3 +73,84 @@ class Candidate(models.Model):
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
+
+
+DUPLICATE_SOURCE_NAME = "duplicate_source_name"
+
+
+class SourceCategory(models.TextChoices):
+    """The four kinds of source. Also reachable as ``Source.Category``."""
+
+    COMPANY_WEBSITE = "company_website", "Company website"
+    JOB_BOARD = "job_board", "Job board"
+    REFERRAL = "referral", "Referral"
+    OTHER = "other", "Other"
+
+
+class SourceQuerySet(models.QuerySet):
+    def active(self) -> "SourceQuerySet":
+        """Return the sources new applications may pick. Retired sources are left out."""
+        return self.filter(is_active=True)
+
+    def retired(self) -> "SourceQuerySet":
+        """Return the retired sources, which old applications keep but new ones can't pick."""
+        return self.filter(is_active=False)
+
+
+class Source(models.Model):
+    """A recruiting channel an application came from, such as a job board or a referral.
+
+    Sources are never deleted: they are retired (``is_active=False``) so old
+    applications keep them while new ones can't pick them.
+    """
+
+    Category = SourceCategory
+
+    name = models.CharField(max_length=100)
+    category = models.CharField(max_length=20, choices=Category.choices)
+    is_active = models.BooleanField(default=True)
+
+    objects = SourceQuerySet.as_manager()
+
+    class Meta:
+        ordering = [Lower("name"), "pk"]
+        constraints = [
+            # Names keep the capitals they were typed with; only uniqueness ignores case.
+            models.UniqueConstraint(
+                Lower("name"),
+                name="source_name_unique_ignoring_case",
+                violation_error_message="A source with this name already exists.",
+                violation_error_code=DUPLICATE_SOURCE_NAME,
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category__in=SourceCategory.values),
+                name="source_category_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def validate_constraints(self, exclude=None) -> None:
+        # Django reports a clash on Lower("name") against the whole form; put it on the name field.
+        try:
+            super().validate_constraints(exclude=exclude)
+        except ValidationError as error:
+            errors = error.update_error_dict({})
+            general = errors.pop(NON_FIELD_ERRORS, [])
+            for item in general:
+                key = "name" if item.code == DUPLICATE_SOURCE_NAME else NON_FIELD_ERRORS
+                errors.setdefault(key, []).append(item)
+            raise ValidationError(errors) from None
+
+    def retire(self) -> None:
+        """Hide this source from new applications. Existing applications keep it."""
+        if self.is_active:
+            self.is_active = False
+            self.save(update_fields=["is_active"])
+
+    def reactivate(self) -> None:
+        """Make a retired source available to new applications again."""
+        if not self.is_active:
+            self.is_active = True
+            self.save(update_fields=["is_active"])
