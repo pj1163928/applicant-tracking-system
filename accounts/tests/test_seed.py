@@ -3,12 +3,15 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 
 from accounts.management.commands.seed import (
+    SEED_APPLICATIONS,
     SEED_CANDIDATES,
     SEED_OPENINGS,
     SEED_PASSWORD,
     SEED_SOURCES,
 )
 from accounts.roles import role_label
+from applications.models import Application, StageChange
+from applications.services import prefill_source
 from candidates.models import Candidate, Source
 from openings.models import JobOpening
 
@@ -30,7 +33,9 @@ def snapshot():
     candidates = list(Candidate.objects.order_by("pk").values())
     sources = list(Source.objects.order_by("pk").values())
     openings = list(JobOpening.objects.order_by("pk").values())
-    return users, candidates, sources, openings
+    applications = list(Application.objects.order_by("pk").values())
+    stage_changes = list(StageChange.objects.order_by("pk").values())
+    return users, candidates, sources, openings, applications, stage_changes
 
 
 def test_seed_creates_one_user_per_role():
@@ -65,7 +70,7 @@ def test_seed_repairs_a_changed_seed_user():
     assert role_label(user) == "Recruiter"
 
 
-def test_seed_adds_sample_candidates_without_applications():
+def test_seed_adds_sample_candidates():
     call_command("seed")
 
     emails = set(Candidate.objects.values_list("email", flat=True))
@@ -168,3 +173,47 @@ def test_seed_repairs_a_seeded_openings_details():
     data = JobOpening.objects.get(title="Data Engineer")
     assert data.description == "Own the pipelines that feed our reporting warehouse."
     assert data.location == "Dallas, TX"
+
+
+def test_seed_adds_applications_at_applied_each_with_its_first_history_row():
+    call_command("seed")
+
+    applications = Application.objects.select_related("opening", "source")
+    assert applications.count() == len(SEED_APPLICATIONS)
+    assert set(applications.values_list("stage", flat=True)) == {Application.Stage.APPLIED}
+    assert all(a.opening.is_open and a.source.is_active for a in applications)
+    assert StageChange.objects.count() == len(SEED_APPLICATIONS)
+    assert set(
+        StageChange.objects.values_list("from_stage", "to_stage", "changed_by__username")
+    ) == {("", Application.Stage.APPLIED, "recruiter")}
+    referrals = applications.exclude(referred_by="")
+    assert {a.source.category for a in referrals} == {Source.Category.REFERRAL}
+    # Some candidates have no applications, and Ann's latest source is the referral.
+    assert Candidate.objects.filter(applications__isnull=True).exists()
+    ann = Candidate.objects.get(email="ann.lee@example.com")
+    assert ann.applications.count() == 2
+    assert prefill_source(ann).name == "Employee referral"
+
+
+def test_rerunning_seed_keeps_a_staff_correction_to_an_applications_source():
+    call_command("seed")
+    ben = Application.objects.get(candidate__email="ben.ortiz@example.com")
+    ben.source = Source.objects.get(name="Career fair")  # staff fix the source on purpose
+    ben.save()
+
+    call_command("seed")
+
+    assert Application.objects.count() == len(SEED_APPLICATIONS)
+    ben.refresh_from_db()
+    assert ben.source.name == "Career fair"
+
+
+def test_seed_skips_a_missing_application_whose_opening_staff_have_closed():
+    call_command("seed")
+    Application.objects.filter(opening__title="Data Engineer").delete()
+    JobOpening.objects.filter(title="Data Engineer").update(status=JobOpening.Status.CLOSED)
+
+    call_command("seed")
+
+    assert not Application.objects.filter(opening__title="Data Engineer").exists()
+    assert Application.objects.count() == len(SEED_APPLICATIONS) - 1

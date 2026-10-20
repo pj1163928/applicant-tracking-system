@@ -8,10 +8,13 @@ changes nothing.
 from dataclasses import dataclass
 
 from django.contrib.auth.models import Group, User
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
+from applications.models import Application
+from applications.services import record_application
 from candidates.models import Candidate, Source
 from openings.models import JobOpening
 
@@ -44,7 +47,7 @@ class SeedCandidate:
     notes: str = ""
 
 
-# Phase 2. Some have no phone or notes; none has applied yet (applications arrive in Phase 5).
+# Phase 2. Some have no phone or notes. Phase 5 gives some of them applications.
 SEED_CANDIDATES: tuple[SeedCandidate, ...] = (
     SeedCandidate("Ann", "Lee", "ann.lee@example.com", "555-0101", "Strong Django portfolio."),
     SeedCandidate("Ben", "Ortiz", "ben.ortiz@example.com", "555-0102"),
@@ -142,8 +145,32 @@ SEED_OPENINGS: tuple[SeedOpening, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class SeedApplication:
+    candidate: str  # a seeded candidate's email; (candidate, opening) is the natural key
+    opening: str  # a seeded opening's title
+    source: str  # a seeded source's name
+    referred_by: str = ""
+
+
+# Phase 5. Recorded in this order, through record_application(), by the seeded Recruiter.
+# Ann applies twice, so a third application for her pre-fills her latest source
+# (the referral). Several candidates have no applications at all.
+SEED_APPLICATIONS: tuple[SeedApplication, ...] = (
+    SeedApplication("ann.lee@example.com", "Backend Developer", "LinkedIn Jobs"),
+    SeedApplication("ben.ortiz@example.com", "Backend Developer", "Indeed"),
+    SeedApplication("hana.kim@example.com", "Backend Developer", "Employee referral", "Sam Ortiz"),
+    SeedApplication("dev.sharma@example.com", "Data Engineer", "Company careers page"),
+    SeedApplication("chloe.nguyen@example.com", "Product Designer", "Career fair"),
+    SeedApplication("elena.rossi@example.com", "Product Designer", "LinkedIn Jobs"),
+    SeedApplication("ann.lee@example.com", "QA Analyst", "Employee referral", "Dana Lee"),
+)
+
+
 class Command(BaseCommand):
-    help = "Create one demo user per role, plus sample candidates, sources and openings."
+    help = (
+        "Create one demo user per role, plus sample candidates, sources, openings and applications."
+    )
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:
@@ -159,6 +186,12 @@ class Command(BaseCommand):
         self.stdout.write(f"Sources: {created} created, {len(SEED_SOURCES) - created} checked")
         created = sum(seed_opening(spec)[1] for spec in SEED_OPENINGS)
         self.stdout.write(f"Openings: {created} created, {len(SEED_OPENINGS) - created} checked")
+        recruiter = User.objects.get(username="recruiter")
+        results = [seed_application(spec, recruiter) for spec in SEED_APPLICATIONS]
+        self.stdout.write(
+            f"Applications: {results.count(CREATED)} created, {results.count(CHECKED)} checked, "
+            f"{results.count(SKIPPED)} skipped"
+        )
         self.stdout.write(
             self.style.SUCCESS(f"Seed complete. Password for every user: {SEED_PASSWORD}")
         )
@@ -254,3 +287,33 @@ def seed_opening(spec: SeedOpening) -> tuple[JobOpening, bool]:
     if changed:
         opening.save(update_fields=[*changed, "updated_at"])
     return opening, False
+
+
+CREATED, CHECKED, SKIPPED = "created", "checked", "skipped"
+
+
+def seed_application(spec: SeedApplication, by: User) -> str:
+    """Record one seeded application unless it exists; return CREATED, CHECKED or SKIPPED.
+
+    An existing application is left exactly as it is, since staff may have
+    corrected its source on purpose. A missing one goes through
+    ``record_application()``, so it gets its first history row; if staff have
+    since closed the opening or retired the source, it is skipped.
+    """
+    candidate = Candidate.objects.get(email=spec.candidate)
+    department = next(o.department for o in SEED_OPENINGS if o.title == spec.opening)
+    opening = JobOpening.objects.get(title=spec.opening, department=department)
+    if Application.objects.filter(candidate=candidate, opening=opening).exists():
+        return CHECKED
+    source = Source.objects.get(name__iexact=spec.source)
+    try:
+        record_application(
+            candidate=candidate,
+            opening=opening,
+            source=source,
+            by=by,
+            referred_by=spec.referred_by,
+        )
+    except ValidationError:
+        return SKIPPED
+    return CREATED

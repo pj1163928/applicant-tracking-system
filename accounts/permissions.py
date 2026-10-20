@@ -31,6 +31,18 @@ def can_manage_sources(user: AnyUser) -> bool:
     return has_role(user, *SOURCE_MANAGER_ROLES)
 
 
+# Roles that record applications and correct their source. Admins always pass role checks.
+APPLICATION_MANAGER_ROLES: tuple[str, ...] = (RECRUITER,)
+
+
+def can_manage_applications(user: AnyUser) -> bool:
+    """Return True if the user may record applications or edit their source.
+
+    That is an Admin or a Recruiter.
+    """
+    return has_role(user, *APPLICATION_MANAGER_ROLES)
+
+
 # Roles that create and edit job openings. Admins always pass role checks.
 OPENING_MANAGER_ROLES: tuple[str, ...] = (RECRUITER, HIRING_MANAGER)
 

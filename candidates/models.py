@@ -96,6 +96,16 @@ class SourceQuerySet(models.QuerySet):
         """Return the retired sources, which old applications keep but new ones can't pick."""
         return self.filter(is_active=False)
 
+    def active_or_current(self, current: "Source | None") -> "SourceQuerySet":
+        """Return the active sources plus ``current``, even if ``current`` is retired.
+
+        An existing application's form uses this, so a retired source it already
+        has still shows and stays valid. No other retired source is offered.
+        """
+        if current is None:
+            return self.active()
+        return self.filter(Q(is_active=True) | Q(pk=current.pk))
+
 
 class Source(models.Model):
     """A recruiting channel an application came from, such as a job board or a referral.

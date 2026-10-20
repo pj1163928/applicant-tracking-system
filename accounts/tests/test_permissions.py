@@ -3,6 +3,7 @@ from django.contrib.auth.models import AnonymousUser, Group
 
 from accounts.permissions import (
     can_be_designated_authority,
+    can_manage_applications,
     can_manage_candidates,
     can_manage_openings,
     can_manage_sources,
@@ -120,3 +121,25 @@ def test_inactive_or_anonymous_users_cannot_manage_openings(hiring_manager):
 
     assert can_manage_openings(hiring_manager) is False
     assert can_manage_openings(AnonymousUser()) is False
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "expected"),
+    [
+        ("admin", True),
+        ("recruiter", True),
+        ("hiring_manager", False),
+        ("interviewer", False),
+        ("no_role_user", False),
+    ],
+)
+def test_can_manage_applications_by_role(request, user_fixture, expected):
+    assert can_manage_applications(request.getfixturevalue(user_fixture)) is expected
+
+
+def test_inactive_or_anonymous_users_cannot_manage_applications(recruiter):
+    recruiter.is_active = False
+    recruiter.save()
+
+    assert can_manage_applications(recruiter) is False
+    assert can_manage_applications(AnonymousUser()) is False

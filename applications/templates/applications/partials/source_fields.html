@@ -1,0 +1,11 @@
+{% comment %}
+The source picker, plus "Referred by" only when the chosen source is a Referral.
+HTMX swaps this in whenever the source (or, on a new application, the candidate) changes.
+Expects `form`.
+{% endcomment %}
+{% include "applications/partials/field.html" with field=form.source %}
+{% if form.shows_referred_by %}
+<div class="animate-rise motion-reduce:animate-none" data-testid="referred-by">
+  {% include "applications/partials/field.html" with field=form.referred_by %}
+</div>
+{% endif %}

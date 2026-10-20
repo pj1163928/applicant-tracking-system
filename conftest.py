@@ -1,9 +1,10 @@
-"""Fixtures shared by every app's tests: one user per role."""
+"""Fixtures shared by every app's tests: one user per role, and an opening factory."""
 
 import pytest
 from django.contrib.auth.models import Group, User
 
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
+from openings.models import JobOpening
 
 
 @pytest.fixture(autouse=True)
@@ -48,3 +49,15 @@ def interviewer(make_user) -> User:
 @pytest.fixture
 def no_role_user(make_user) -> User:
     return make_user("norole")
+
+
+@pytest.fixture
+def make_opening(db):
+    """Return a factory that creates an opening with sensible defaults."""
+
+    def _make_opening(title: str, authority: User, **fields) -> JobOpening:
+        fields.setdefault("department", "Engineering")
+        fields.setdefault("description", f"About the {title} role.")
+        return JobOpening.objects.create(title=title, designated_authority=authority, **fields)
+
+    return _make_opening

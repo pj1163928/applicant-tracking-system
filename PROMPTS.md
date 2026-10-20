@@ -28,6 +28,59 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — Applicant Tracking System: Phase 5/14, Record applications
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking system phase 5`.
+2. Alright some samfeguards to consider for our TDD: record_application() must create the application and its initial stage change at the same time, if it fails it must be rolled back. The initial transition should record record no revious stage and the new applied stage.
+Use the database constraints and foreign-key protections. Make application and stage-istory record read-only in Django admin so that ithe server that creates the initial history row is not bypassed.
+active_or_current(source) should include active sources and the application's existing sources when a source is retired. it should not make every retired source available as a new selection. Clear the referred_by when the selected source in not a referral. Including when saving through code rather than a form. Also make sure the candidate's page and and opening page only show record application action when  a user has permission and the opning is available. Views must also enfore these restrictions too independently.
+3. Ok this test looks good move to next
+4. Looks good move to next
+5. Ok looks good move to development
+
+### Summary
+
+- **Outcome:** A new `applications` app. Recruiters and Admins record that a candidate applied for an open opening through an active source, at `/applications/new/`, started from a candidate's page (`?candidate=`) or an open opening's page (`?opening=`). `record_application()` writes the application at Applied and its first StageChange row (no stage → Applied, cause manual, by the user) in one transaction, and rolls both back if either fails. The source is pre-filled from the candidate's most recent application, and changing the candidate or source refreshes the source fields through HTMX, showing "Referred by" only for Referral sources. A duplicate gets "Ann Lee has already applied for Backend Developer." on the form, and the database's unique constraint backs it up. Closed openings and retired sources aren't offered and a hand-made POST naming one fails validation. An edit page (`/applications/<pk>/edit/`) changes only the source and "Referred by", and still shows and accepts an application's own retired source, but no other retired one. Both detail pages list applications with their stage, source and date. "Record application" appears only for Recruiters and Admins, and only when the opening is open (opening page) or the candidate has an open opening left to apply for (candidate page). The view refuses those cases on its own too. The Django admin shows applications and stage history read-only. `seed` records seven applications through the service, Ann twice so her third pre-fills the referral; a second run changes nothing. 352 tests pass (98 new); `ruff check` and `ruff format` are clean. All seven Phase 5 acceptance criteria are ticked.
+- **Changes:**
+  - `applications/` (new app): `stages.py` (the eight `Stage` choices; Phase 6 adds the rules here); `models.py` (`Application` with CASCADE to candidate, PROTECT to opening and source, a unique constraint on (candidate, opening), a stage check, `newest_first()`, and a `save()` that clears `referred_by` for non-Referral sources, including `update_fields` saves; `StageChange` with PROTECT to `changed_by`, checks on both stages and the cause, a "must change the stage" check, and a partial unique constraint allowing one initial row per application); `services.py` (`application_refusal()`, `openings_open_to()`, `prefill_source()`, `record_application()`, which also checks the user's role and turns a lost race on the unique constraint into the friendly error); `forms.py` (`ApplicationForm`, `ApplicationSourceForm`, a shared `ReferredByMixin` with `shows_referred_by` and the HTMX `refresh_url`, and labelled choice fields); `views.py` (`ApplicationCreateView`, `ApplicationUpdateView`, and a mixin that returns only the source fields to HTMX GETs with `Vary: HX-Request`); `urls.py` (`applications:create`, `applications:update`); `admin.py` (view-only admins with a read-only history inline); `migrations/0001_initial.py`; templates (`application_form.html`, and the `field`, `source_fields`, `source_line` and `stage_badge` partials); tests (`conftest.py`, `test_models.py`, `test_services.py`, `test_forms.py`, `test_views.py`, `test_detail_pages.py`, `test_admin.py`).
+  - `accounts/permissions.py` and `accounts_tags.py`: `APPLICATION_MANAGER_ROLES`, `can_manage_applications`, and its filter.
+  - `candidates/models.py`: `SourceQuerySet.active_or_current(source)`. `openings/models.py`: `JobOpeningQuerySet.accepting_applications()`.
+  - `candidates/views.py` and `candidate_detail.html`, `openings/views.py` and `jobopening_detail.html`: the Applications sections and the guarded "Record application" action.
+  - `accounts/management/commands/seed.py`: `SEED_APPLICATIONS` and `seed_application()`. Missing applications are recorded through `record_application()`; existing ones are never changed; one whose opening was closed or source retired since is skipped and counted. `accounts/tests/test_seed.py` adds applications and stage changes to the idempotency snapshot, plus three new tests.
+  - `conftest.py`: `make_opening` moved here from `openings/tests/conftest.py` so the applications tests share it.
+  - `config/settings.py`, `config/urls.py`; `templates/icons/` (`file-plus`, `clipboard-list` from lucide-static v1.49.0).
+  - `CLAUDE.md`, `docs/TESTING.md`, `README.md`: the new permission, `record_application()` as the only way in, rule-based choice querysets, the moved fixture, the "both rows or neither" test pattern, and the updated status.
+  - `plans/applicant-tracking-system.md`: Phase 5 criteria ticked.
+- **TDD:** The plan's three candidates, each red on an assertion and then green:
+  1. *One application per candidate per opening.* A form test posting Ann's second application for Backend Developer. It was red because only the database constraint's generic `__all__` message appeared. The fix: `application_refusal()` returns a named error, and `ApplicationForm.clean()` puts it on `opening`, which also skips Django's generic message. An ordinary `bulk_create` test proves the database half.
+  2. *No applications for closed openings.* A service test, red with `DID NOT RAISE`. The fix: `application_refusal()` checks `opening.is_open` first, and `record_application()` raises it before writing anything.
+  3. *Source pre-fill picks the most recent application.* One test with five parametrized cases: none; one; several, with dates out of pk order; a tie on date; and a newest source retired since. Another candidate's newer application must not leak in. It was red because the placeholder returned `None`. The fix: the candidate's applications `newest_first()`, returning the source only if it's still active.
+- **Decisions:**
+  - The plan had no edit URL, but the retired-source criterion needs one, so `/applications/<pk>/edit/` changes only the source and "Referred by".
+  - The pre-fill never falls back to an older application when the newest one's source is retired.
+  - The opening dropdown lists every open opening, so a duplicate gets the friendly error instead of disappearing from the list.
+  - After saving, you go back to the page you started from (`?from=opening` on edit links from an opening).
+  - HTMX refreshes use the form's own URL and `HX-Trigger-Name` to tell a candidate change (re-fill the source) from a source change.
+  - CASCADE from candidate is for Phase 9's permanent delete. A view-only admin means a candidate with applications can't be deleted in the Django admin; that's left for Phase 9's own delete page.
+  - No nav link, since there's no applications list page.
+- **Deviations:** At the brief I asked for extra safeguards:
+  - `record_application()` all-or-nothing, with the initial row recording no previous stage → Applied
+  - database constraints and PROTECT foreign keys
+  - a read-only admin for applications and stage history
+  - `active_or_current()` allowing only the application's own retired source
+  - `referred_by` cleared on every save, not just through forms
+  - the "Record application" action shown only when permitted and available, with the views enforcing it on their own
+
+  These were added as ordinary tests next to the three TDD cycles: a `monkeypatch` rollback test, constraint tests (including a partial unique constraint for one initial row), admin 403 tests, the `active_or_current` tests, `save(update_fields=["source"])` clearing `referred_by`, and view redirects for a closed opening or a candidate with nowhere left to apply. I approved each RED test as written.
+- **Sideways:**
+  - The first seed run on the dev database reported "1 skipped". Phase 3's manual testing had left Indeed retired, so Ben's Indeed application was skipped instead of undoing that change. This is the intended behavior.
+  - The first headless-Edge screenshots were captured mid `animate-rise`, so everything looked faded. They were retaken with `--virtual-time-budget`.
+  - The first phone shots were cropped because headless Edge has a minimum window width. They were retaken in a 360px iframe, as in Phase 4.
+  - Ruff flagged one docstring over 100 characters in `accounts_tags.py`; it was shortened.
+  - A drafted pre-fill test used convoluted date arithmetic. It was rewritten with explicit "days ago" per case before it was run or shown.
+
 ## 2026-10-19 — Applicant Tracking System: Phase 4/14, Job openings
 
 ### Prompts

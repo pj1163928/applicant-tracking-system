@@ -4,8 +4,8 @@ CIDM 3312 Project #1. An internal, staff-only web app for tracking job
 applicants from **Applied** to **Hired**. Recruiters, hiring managers and
 interviewers sign in with accounts an Admin creates; candidates never log in.
 
-> **Status:** Phases 1–4 of 14 are complete: project setup, staff login, roles,
-> the responsive layout, candidates, sources and job openings. See the [implementation plan](plans/applicant-tracking-system.md)
+> **Status:** Phases 1–5 of 14 are complete: project setup, staff login, roles,
+> the responsive layout, candidates, sources, job openings and recording applications. See the [implementation plan](plans/applicant-tracking-system.md)
 > for what comes next.
 
 ## Features
@@ -30,15 +30,20 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
   **designated authority**, chosen from active Admins, Recruiters and Hiring Managers.
   The Openings list has **My openings / All** tabs (Hiring Managers start on My openings,
   everyone else on All) and labels each opening with its authority.
+- Applications: Recruiters and Admins record that a candidate applied for an open
+  opening, through an active source. The source is pre-filled from the candidate's most
+  recent application, and a "Referred by" field appears for Referral sources. Each
+  application starts at **Applied** with its first stage-history row, and a candidate can
+  apply for each opening only once. Applications are listed on the candidate's and the
+  opening's pages, and an old application's form still shows a source retired since.
 - A `seed` command that creates one demo user per role, ten sample candidates, six
-  sample sources (one of them retired) and six openings (open and closed, split across
-  three designated authorities).
+  sample sources (one of them retired), six openings (open and closed, split across
+  three designated authorities) and seven applications.
 
 **Planned** (see the [PRD](prd/applicant-tracking-system.md))
 
 - Skills on openings.
-- One application per candidate per opening, moved through eight stages on a
-  per-opening pipeline board, by menu or drag-and-drop, with no page reload.
+- Moving applications through eight stages on a per-opening pipeline board, by menu or drag-and-drop, with no page reload.
 - A full stage history, with notes required for unusual moves.
 - Closing and reopening openings, with grace periods and candidate emails.
 - Candidate archiving, and handing over a departing staff member's openings.
@@ -106,6 +111,7 @@ config/          Django settings, root URLs, the {% icon %} tag, shared form and
 accounts/        roles, permission rules, login, the role check (RoleRequiredMixin), seed
 candidates/      candidates (search, list/detail/add/edit) and sources (/sources/)
 openings/        job openings (My openings / All list, detail, create/edit)
+applications/    applications and stage history (record, edit source, the stages)
 templates/       skeleton.html, base.html (staff layout), partials/, icons/
 assets/css/      Tailwind source CSS (themes and animations)
 static/          logo and built CSS (tailwind.css is generated and git-ignored)
@@ -114,8 +120,7 @@ prd/, plans/     product requirements and the phase-by-phase plan
 prototypes/      throwaway design prototypes (reference only)
 ```
 
-More apps (`applications`, `notifications`) arrive
-in later phases.
+The `notifications` app arrives in a later phase.
 
 ### Documentation
 

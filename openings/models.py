@@ -26,6 +26,10 @@ class JobOpeningQuerySet(models.QuerySet):
             return self.filter(designated_authority=user)
         return self
 
+    def accepting_applications(self) -> "JobOpeningQuerySet":
+        """Return the openings that take new applications: the open ones."""
+        return self.filter(status=OpeningStatus.OPEN)
+
     def open_first(self) -> "JobOpeningQuerySet":
         """Order open openings before closed ones, then by title."""
         return self.annotate(

@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "accounts",
     "candidates",
     "openings",
+    "applications",
 ]
 
 MIDDLEWARE = [

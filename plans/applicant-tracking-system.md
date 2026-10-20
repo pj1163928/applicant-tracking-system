@@ -168,13 +168,13 @@ Recruiters and Admins record that a candidate has applied for an open opening, w
 
 ### Acceptance criteria
 
-- [ ] A second application for the same candidate and opening is refused, by the form and by the database.
-- [ ] Applications can't be created for closed openings.
-- [ ] Creating an application writes exactly one StageChange row (no stage → Applied) in the same database transaction.
-- [ ] The source is pre-filled from the candidate's previous application, if there is one.
-- [ ] "Referred by" shows only for Referral sources.
-- [ ] New applications can only pick active sources, but an old application's retired source still shows on its form.
-- [ ] Only Recruiters and Admins can record applications.
+- [x] A second application for the same candidate and opening is refused, by the form and by the database.
+- [x] Applications can't be created for closed openings.
+- [x] Creating an application writes exactly one StageChange row (no stage → Applied) in the same database transaction.
+- [x] The source is pre-filled from the candidate's previous application, if there is one.
+- [x] "Referred by" shows only for Referral sources.
+- [x] New applications can only pick active sources, but an old application's retired source still shows on its form.
+- [x] Only Recruiters and Admins can record applications.
 
 ### TDD
 

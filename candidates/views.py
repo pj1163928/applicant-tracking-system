@@ -9,6 +9,7 @@ from django.views.generic.detail import SingleObjectMixin
 
 from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import CANDIDATE_MANAGER_ROLES, SOURCE_MANAGER_ROLES
+from applications.services import openings_open_to
 from candidates.forms import CandidateForm, SourceForm, SourceRenameForm
 from candidates.models import Candidate, Source
 from config.htmx import is_htmx_partial
@@ -41,9 +42,18 @@ class CandidateListView(ListView):
 
 
 class CandidateDetailView(DetailView):
-    """A candidate's contact details and (from Phase 5) their applications."""
+    """A candidate's contact details and their applications, newest first."""
 
     model = Candidate
+
+    def get_context_data(self, **kwargs):
+        candidate = self.object
+        return super().get_context_data(**kwargs) | {
+            "applications": candidate.applications.newest_first().select_related(
+                "opening", "source"
+            ),
+            "has_openings_to_apply": openings_open_to(candidate).exists(),
+        }
 
 
 class CandidateCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):

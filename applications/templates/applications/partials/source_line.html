@@ -1,0 +1,8 @@
+{% comment %}An application's source, "referred by" and date, as one quiet line. Expects `application`.{% endcomment %}
+<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm opacity-70">
+  <span class="inline-flex items-center gap-1.5" data-testid="application-source">
+    {% icon "signpost" "size-4" %} {{ application.source.name }}{% if not application.source.is_active %} <span class="badge badge-xs badge-ghost">retired</span>{% endif %}
+  </span>
+  {% if application.referred_by %}<span data-testid="application-referred-by">Referred by {{ application.referred_by }}</span>{% endif %}
+  <span>Applied {{ application.created_at|date:"M j, Y" }}</span>
+</p>

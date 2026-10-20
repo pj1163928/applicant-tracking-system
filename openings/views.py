@@ -52,6 +52,10 @@ class OpeningDetailView(DetailView):
     queryset = JobOpening.objects.select_related("designated_authority")
     context_object_name = "opening"
 
+    def get_context_data(self, **kwargs):
+        applications = self.object.applications.newest_first().select_related("candidate", "source")
+        return super().get_context_data(**kwargs) | {"applications": applications}
+
 
 class OpeningCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):
     """Create an opening. Admins, Recruiters and Hiring Managers only; others get 403."""

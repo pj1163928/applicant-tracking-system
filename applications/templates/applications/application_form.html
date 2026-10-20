@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}{% if application %}Edit application{% else %}Record application{% endif %}{% endblock %}
+
+{% block content %}
+<a href="{{ back_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} {{ back_label }}
+</a>
+
+<div class="card mx-auto mt-4 max-w-2xl border border-base-300 bg-base-100 shadow-sm">
+  {# Changing a field with hx-get swaps fresh source fields into #source-fields. #}
+  <form method="post" class="card-body gap-4" novalidate
+        hx-target="#source-fields" hx-swap="innerHTML" hx-include="closest form">
+    {% csrf_token %}
+    {% if application %}
+    <h1 class="text-2xl font-bold">Edit application</h1>
+    <div class="rounded-box bg-base-200/60 p-4 text-sm" data-testid="application-summary">
+      <p class="font-semibold">{{ application.candidate.full_name }} · {{ application.opening.title }}</p>
+      <p class="mt-1 flex flex-wrap items-center gap-2 opacity-80">
+        {% include "applications/partials/stage_badge.html" %}
+        Applied {{ application.created_at|date:"M j, Y" }}. Only the source can be changed here.
+      </p>
+    </div>
+    {% else %}
+    <div>
+      <h1 class="text-2xl font-bold">Record application</h1>
+      <p class="mt-1 text-sm opacity-70">The application starts at Applied. The source is filled in from the candidate's most recent application.</p>
+    </div>
+    {% endif %}
+
+    {% if form.non_field_errors %}
+    <div role="alert" class="alert alert-error alert-soft text-sm" data-testid="form-errors">
+      {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    <fieldset class="fieldset grid gap-y-3">
+      {% if not application %}
+      {% include "applications/partials/field.html" with field=form.candidate %}
+      {% include "applications/partials/field.html" with field=form.opening %}
+      {% endif %}
+      <div id="source-fields" class="grid gap-y-3" aria-live="polite">
+        {% include "applications/partials/source_fields.html" %}
+      </div>
+    </fieldset>
+
+    <div class="card-actions mt-2 justify-end">
+      <a href="{{ back_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2" data-testid="application-submit">
+        {% if application %}{% icon "save" "size-5" %} Save changes{% else %}{% icon "file-plus" "size-5" %} Record application{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

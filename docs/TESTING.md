@@ -35,6 +35,7 @@ Plain pytest fixtures, no factory libraries. The root `conftest.py` provides:
 | `interviewer` | Interviewer group ("Ivy Interviewer") |
 | `no_role_user` | logged-in user with no group |
 | `make_user(username, role=None, **fields)` | factory for anything else; password is `"pw"` |
+| `make_opening(title, authority, **fields)` | factory for a job opening (default department and description) |
 
 An autouse `fast_password_hashing` fixture switches every test to Django's MD5
 hasher. The default hasher is deliberately slow and made the suite about 90×
@@ -70,6 +71,9 @@ To run one test across roles, parametrize on the fixture name and use
   changes nothing (same pks and same field values). When staff can change a
   seeded record's state on purpose (retiring a source, for example), also test
   that a re-run keeps their change and adds no duplicate.
+- **"Both rows or neither"** (such as `record_application()` writing the application and
+  its first StageChange row): make the second write fail with `monkeypatch` and assert
+  that the row counts are unchanged.
 - **Case-insensitive uniqueness**: prove the database refuses the clash with
   `bulk_create`, which skips `save()` and form validation.
 - **Choice fields that encode a rule** (such as the designated authority):

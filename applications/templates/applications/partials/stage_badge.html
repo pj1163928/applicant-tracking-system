@@ -1,0 +1,4 @@
+{% comment %}An application's stage as a badge. Expects `application`.{% endcomment %}
+{% with stage=application.stage %}
+<span class="badge badge-sm whitespace-nowrap {% if stage == 'hired' %}badge-success{% elif stage == 'offer' %}badge-warning badge-soft{% elif stage == 'rejected' %}badge-error badge-soft{% elif stage == 'withdrawn' %}badge-ghost{% else %}badge-info badge-soft{% endif %}" data-testid="stage-{{ stage }}">{{ application.get_stage_display }}</span>
+{% endwith %}

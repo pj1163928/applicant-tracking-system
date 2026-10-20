@@ -56,3 +56,16 @@ def test_retiring_or_reactivating_twice_is_harmless():
     indeed.reactivate()
     indeed.reactivate()
     assert list(Source.objects.active()) == [indeed]
+
+
+def test_active_or_current_adds_only_the_given_retired_source():
+    indeed = Source.objects.create(name="Indeed", category=Source.Category.JOB_BOARD)
+    monster = Source.objects.create(
+        name="Monster", category=Source.Category.JOB_BOARD, is_active=False
+    )
+    dice = Source.objects.create(name="Dice", category=Source.Category.JOB_BOARD, is_active=False)
+
+    assert set(Source.objects.active_or_current(monster)) == {indeed, monster}
+    assert set(Source.objects.active_or_current(indeed)) == {indeed}
+    assert set(Source.objects.active_or_current(None)) == {indeed}
+    assert dice not in Source.objects.active_or_current(monster)

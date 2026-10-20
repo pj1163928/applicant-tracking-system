@@ -52,4 +52,53 @@
     <p class="text-xs opacity-60">Created {{ opening.created_at|date:"M j, Y" }} · Updated {{ opening.updated_at|date:"M j, Y" }}</p>
   </div>
 </section>
+
+<section class="mt-6" aria-labelledby="applications-heading">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 id="applications-heading" class="text-lg font-bold">
+      Applications {% if applications %}<span class="badge badge-sm badge-ghost align-middle">{{ applications|length }}</span>{% endif %}
+    </h2>
+    {% if user|can_manage_applications %}
+    {% if opening.is_open %}
+    <a href="{% url 'applications:create' %}?opening={{ opening.pk }}" class="btn btn-primary btn-sm gap-2" data-testid="application-add">
+      {% icon "file-plus" "size-4" %} Record application
+    </a>
+    {% else %}
+    <p class="inline-flex items-center gap-1.5 text-sm opacity-70" data-testid="application-add-unavailable">
+      {% icon "lock" "size-4" %} Closed openings don't take new applications.
+    </p>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  {% if applications %}
+  <ul class="mt-2 grid gap-2" data-testid="applications">
+    {% for application in applications %}
+    <li class="animate-rise motion-reduce:animate-none rounded-box border border-base-300 bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="application">
+      <div class="flex flex-wrap items-start gap-3">
+        {% include "partials/avatar.html" with user=application.candidate size="w-9" text="text-xs" %}
+        <div class="min-w-0 flex-1">
+          <p class="flex flex-wrap items-center gap-2">
+            <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover font-semibold break-words">{{ application.candidate.full_name }}</a>
+            {% include "applications/partials/stage_badge.html" %}
+          </p>
+          {% include "applications/partials/source_line.html" %}
+        </div>
+        {% if user|can_manage_applications %}
+        <a href="{% url 'applications:update' application.pk %}?from=opening" class="btn btn-ghost btn-sm gap-1.5" data-testid="application-edit" aria-label="Edit the source of {{ application.candidate.full_name }}'s application">
+          {% icon "pencil" "size-4" %}<span class="hidden sm:inline">Edit source</span>
+        </a>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-6 text-center" data-testid="applications-empty">
+    {% icon "clipboard-list" "mx-auto size-7 opacity-50" %}
+    <p class="mt-2 font-semibold">No applications yet.</p>
+    <p class="text-sm opacity-70">{% if opening.is_open %}Applications recorded for this opening will show up here with their stage.{% else %}This opening closed before anyone applied.{% endif %}</p>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

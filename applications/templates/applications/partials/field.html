@@ -1,0 +1,12 @@
+{% comment %}One form field: label, input, then its errors or help text. Expects `field`.{% endcomment %}
+<div data-testid="field-{{ field.name }}">
+  <label class="fieldset-legend pt-0" for="{{ field.id_for_label }}">
+    {{ field.label }}{% if not field.field.required %} <span class="font-normal opacity-60">(optional)</span>{% endif %}
+  </label>
+  {{ field }}
+  {% if field.errors %}
+  {% for error in field.errors %}<p class="mt-1 text-sm text-error" data-testid="error-{{ field.name }}">{{ error }}</p>{% endfor %}
+  {% elif field.help_text %}
+  <p class="label mt-1 whitespace-normal">{{ field.help_text }}</p>
+  {% endif %}
+</div>
