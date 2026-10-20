@@ -1,0 +1,111 @@
+{% extends "skeleton.html" %}
+{% load accounts_tags %}
+{% comment %}
+Layout for signed-in staff pages. Large screens (lg and up) get a top
+navigation bar; smaller screens get a menu button that slides in a sidebar
+(a DaisyUI drawer). Both menus render partials/nav_links.html.
+{% endcomment %}
+
+{% block body %}
+<div class="drawer">
+  <input id="nav-drawer" type="checkbox" class="drawer-toggle" aria-label="Toggle navigation menu">
+
+  <div class="drawer-content flex min-h-screen flex-col">
+    <header class="navbar sticky top-0 z-30 gap-2 border-b border-base-300 bg-base-100/90 px-2 backdrop-blur sm:px-4">
+      <label for="nav-drawer" class="btn btn-square btn-ghost lg:hidden" aria-label="Open navigation menu" data-testid="drawer-open">
+        {% icon "menu" "size-6" %}
+      </label>
+
+      <a href="{% url 'accounts:home' %}" class="group flex items-center gap-2 rounded-lg px-1" aria-label="ATS home">
+        {% include "partials/logo.html" %}
+      </a>
+
+      <nav class="ml-4 hidden flex-1 lg:flex" aria-label="Main">
+        <ul class="menu menu-horizontal gap-1 px-1">
+          {% include "partials/nav_links.html" %}
+        </ul>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-1">
+        {% include "partials/theme_toggle.html" %}
+
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-ghost gap-2 px-2" aria-label="Account menu">
+            {% include "partials/avatar.html" with size="w-8" text="text-xs" %}
+            <span class="hidden text-left leading-tight sm:block">
+              <span class="block text-sm font-semibold" data-testid="user-name">{{ user.get_full_name|default:user.username }}</span>
+              <span class="block text-xs font-normal opacity-60" data-testid="user-role">{{ user|role_label }}</span>
+            </span>
+            {% icon "chevron-down" "size-4 opacity-60" %}
+          </div>
+          <ul tabindex="0" class="menu dropdown-content z-40 mt-3 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+            <li class="menu-title sm:hidden">
+              <span>{{ user.get_full_name|default:user.username }} · {{ user|role_label }}</span>
+            </li>
+            {% if user.is_superuser %}
+            <li><a href="{% url 'admin:index' %}">{% icon "shield-user" "size-4" %} Manage staff (Django admin)</a></li>
+            {% endif %}
+            <li>
+              <form method="post" action="{% url 'accounts:logout' %}" class="p-0">
+                {% csrf_token %}
+                <button type="submit" class="flex w-full items-center gap-2 px-3 py-1.5">{% icon "log-out" "size-4" %} Log out</button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">
+      {% include "partials/messages.html" %}
+      <div class="animate-rise motion-reduce:animate-none">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="px-4 py-6 text-center text-xs opacity-60">
+      ATS · Internal applicant tracking for hiring staff
+    </footer>
+  </div>
+
+  <div class="drawer-side z-40">
+    <label for="nav-drawer" class="drawer-overlay" aria-label="Close navigation menu"></label>
+    <aside class="flex min-h-full w-72 max-w-[85vw] flex-col gap-4 bg-base-100 p-4" data-testid="sidebar">
+      <div class="flex items-center justify-between">
+        <a href="{% url 'accounts:home' %}" class="group flex items-center gap-2" aria-label="ATS home">
+          {% include "partials/logo.html" %}
+        </a>
+        <label for="nav-drawer" class="btn btn-square btn-ghost btn-sm" aria-label="Close navigation menu">
+          {% icon "x" "size-5" %}
+        </label>
+      </div>
+
+      <div class="flex items-center gap-3 rounded-box bg-base-200 p-3">
+        {% include "partials/avatar.html" with size="w-10" text="text-sm" %}
+        <div class="min-w-0 leading-tight">
+          <p class="truncate font-semibold">{{ user.get_full_name|default:user.username }}</p>
+          <p class="text-xs opacity-60">{{ user|role_label }}</p>
+        </div>
+      </div>
+
+      <nav aria-label="Main">
+        <ul class="menu w-full gap-1 p-0">
+          {% include "partials/nav_links.html" %}
+        </ul>
+      </nav>
+
+      <ul class="menu mt-auto w-full gap-1 border-t border-base-300 p-0 pt-4">
+        {% if user.is_superuser %}
+        <li><a href="{% url 'admin:index' %}">{% icon "shield-user" "size-5" %} Manage staff</a></li>
+        {% endif %}
+        <li>
+          <form method="post" action="{% url 'accounts:logout' %}" class="p-0">
+            {% csrf_token %}
+            <button type="submit" class="flex w-full items-center gap-2 px-3 py-1.5">{% icon "log-out" "size-5" %} Log out</button>
+          </form>
+        </li>
+      </ul>
+    </aside>
+  </div>
+</div>
+{% endblock %}

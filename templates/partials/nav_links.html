@@ -1,0 +1,12 @@
+{% comment %}
+Main navigation, shared by the top bar and the small-screen sidebar.
+Each later phase adds one <li> for its section, marking it active with
+request.resolver_match.namespace == "<app>" (for example "candidates").
+{% endcomment %}
+{% with view=request.resolver_match.view_name %}
+<li>
+  <a href="{% url 'accounts:home' %}" class="{% if view == 'accounts:home' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if view == 'accounts:home' %} aria-current="page"{% endif %}>
+    {% icon "house" "size-5" %} Home
+  </a>
+</li>
+{% endwith %}

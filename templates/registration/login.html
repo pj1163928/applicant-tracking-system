@@ -1,0 +1,83 @@
+{% extends "skeleton.html" %}
+
+{% block title %}Log in{% endblock %}
+
+{% block body %}
+<main id="main" class="grid min-h-screen lg:grid-cols-2">
+  {# Brand panel: large screens only. #}
+  <section class="relative hidden overflow-hidden bg-linear-to-br from-primary to-secondary p-12 text-primary-content lg:flex lg:flex-col lg:justify-between">
+    <div class="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-white/10 blur-2xl" aria-hidden="true"></div>
+    <div class="pointer-events-none absolute -bottom-32 -left-16 size-96 rounded-full bg-black/10 blur-2xl" aria-hidden="true"></div>
+
+    <div class="relative flex items-center gap-3">
+      <span class="grid size-11 place-items-center rounded-xl bg-white/15 backdrop-blur">{% icon "briefcase-business" "size-6" %}</span>
+      <span class="text-xl font-bold tracking-tight">ATS</span>
+    </div>
+
+    <div class="relative max-w-md animate-rise motion-reduce:animate-none">
+      <h2 class="text-4xl font-bold leading-tight">Every applicant, from Applied to Hired.</h2>
+      <p class="mt-4 text-lg opacity-90">One shared place for recruiters, hiring managers and interviewers to follow each candidate's progress.</p>
+      <ul class="mt-8 space-y-3">
+        <li class="flex items-center gap-3">{% icon "users-round" "size-5" %} Candidates and where they came from</li>
+        <li class="flex items-center gap-3">{% icon "briefcase-business" "size-5" %} Openings with a pipeline board for each</li>
+        <li class="flex items-center gap-3">{% icon "shield-user" "size-5" %} The right actions for each role</li>
+      </ul>
+    </div>
+
+    <p class="relative text-sm opacity-75">Internal tool · staff accounts only</p>
+  </section>
+
+  {# Login form. #}
+  <section class="flex items-center justify-center p-4 sm:p-8">
+    <div class="w-full max-w-sm animate-rise motion-reduce:animate-none">
+      <div class="mb-8 flex items-center justify-center gap-2 lg:hidden">
+        {% include "partials/logo.html" %}
+      </div>
+
+      <div class="card border border-base-300 bg-base-100 shadow-xl">
+        <form method="post" class="card-body gap-4">
+          {% csrf_token %}
+          <div>
+            <h1 class="text-2xl font-bold">Staff login</h1>
+            <p class="mt-1 text-sm opacity-70">Accounts are created by an Admin. Ask yours if you need access.</p>
+          </div>
+
+          {% if form.non_field_errors %}
+          <div role="alert" class="alert alert-error alert-soft text-sm">
+            {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+          </div>
+          {% endif %}
+
+          <fieldset class="fieldset gap-3">
+            <div>
+              <label class="fieldset-legend pt-0" for="id_username">Username</label>
+              <label class="input w-full">
+                {% icon "user-round" "size-4 opacity-60" %}
+                <input type="text" name="username" id="id_username" value="{{ form.username.value|default:'' }}"
+                       class="grow" autocomplete="username" autofocus required>
+              </label>
+            </div>
+            <div>
+              <label class="fieldset-legend pt-0" for="id_password">Password</label>
+              <label class="input w-full">
+                {% icon "lock" "size-4 opacity-60" %}
+                <input type="password" name="password" id="id_password" class="grow"
+                       autocomplete="current-password" required>
+              </label>
+            </div>
+          </fieldset>
+
+          <input type="hidden" name="next" value="{{ next }}">
+          <button type="submit" class="btn btn-primary w-full gap-2">
+            {% icon "log-in" "size-5" %} Log in
+          </button>
+        </form>
+      </div>
+
+      <div class="mt-6 flex justify-center">
+        {% include "partials/theme_toggle.html" %}
+      </div>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<section class="card overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-linear-to-r from-primary via-secondary to-accent" aria-hidden="true"></div>
+  <div class="card-body gap-4 sm:flex-row sm:items-center">
+    <div class="self-start sm:self-center">
+      {% include "partials/avatar.html" with size="w-16" text="text-xl" %}
+    </div>
+    <div>
+      <h1 class="text-2xl font-bold sm:text-3xl">Welcome, {{ user.get_full_name|default:user.username }}</h1>
+      <p class="mt-2 flex flex-wrap items-center gap-2">
+        You are signed in as
+        <span class="badge badge-primary gap-1">{% icon "shield-user" "size-3.5" %} {{ user|role_label }}</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+{% if not user|can_make_changes %}
+<div role="alert" class="alert alert-info alert-soft mt-6">
+  {% icon "eye" "size-5" %}
+  <span>Your account is view-only: you can look at everything, but you can't make changes.</span>
+</div>
+{% endif %}
+{% endblock %}

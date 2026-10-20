@@ -1,0 +1,6 @@
+{% comment %}Initials avatar for the signed-in user. Pass size (e.g. "w-10") and text (e.g. "text-sm"). DaisyUI styles only <div> children of .avatar.{% endcomment %}
+<div class="avatar avatar-placeholder" aria-hidden="true">
+  <div class="{{ size|default:'w-10' }} rounded-full bg-primary text-primary-content">
+    <span class="{{ text|default:'text-sm' }} font-semibold">{% firstof user.first_name|first|upper user.username|first|upper %}{{ user.last_name|first|upper }}</span>
+  </div>
+</div>

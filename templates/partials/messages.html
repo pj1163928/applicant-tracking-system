@@ -1,0 +1,9 @@
+{% if messages %}
+<div class="mb-6 space-y-2">
+  {% for message in messages %}
+  <div role="alert" class="alert alert-soft animate-rise motion-reduce:animate-none {% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %}">
+    <span>{{ message }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

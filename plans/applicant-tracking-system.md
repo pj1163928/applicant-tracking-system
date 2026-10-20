@@ -64,12 +64,12 @@ A running Django project with the full toolchain: uv, Ruff, Pytest, and Tailwind
 
 ### Acceptance criteria
 
-- [ ] `uv run pytest` and `uv run ruff check .` both pass on the empty project.
-- [ ] Anonymous users are redirected to the login page, and there is no sign-up URL.
-- [ ] The Recruiter, Hiring Manager and Interviewer groups exist after `migrate`.
-- [ ] `seed` creates an Admin, a Recruiter, a Hiring Manager and an Interviewer, and running it twice changes nothing.
-- [ ] Logged-in users see the base layout with their name and role, and can log out.
-- [ ] The shared role check refuses changes (403) from Interviewers.
+- [x] `uv run pytest` and `uv run ruff check .` both pass on the empty project.
+- [x] Anonymous users are redirected to the login page, and there is no sign-up URL.
+- [x] The Recruiter, Hiring Manager and Interviewer groups exist after `migrate`.
+- [x] `seed` creates an Admin, a Recruiter, a Hiring Manager and an Interviewer, and running it twice changes nothing.
+- [x] Logged-in users see the base layout with their name and role, and can log out.
+- [x] The shared role check refuses changes (403) from Interviewers.
 
 ### TDD
 

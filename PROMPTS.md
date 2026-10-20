@@ -28,6 +28,47 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-19 — Applicant Tracking System: Phase 1/14, Project skeleton, staff login and roles
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 1`.
+2. Continue on with the build
+3. Ok the page loaded good but I do want to improve the look of the ATS slightly as it looks sort of bland and boring. maybe including some iconography subtle animations and logos, also I would like you to edit the README. For the layout I would like it to be accesible on large or small screens so I feel this is a good time to mention this before we get to far into things. Ideally a sidebar menu on smaller screens and topbar naviation manu on other screens
+
+### Summary
+
+- **Outcome:** A running Django 6.1 project (Python 3.13, uv) with Ruff, Pytest/pytest-django and Tailwind + DaisyUI v5 through django-tailwind-cli 4.8. It has staff login and logout with no sign-up page, and every view requires a login. The three role groups are created by a data migration. The base layout has a navbar with the user's name, role badge, logout button and light/dark toggle, and loads HTMX. A shared `RoleRequiredMixin` returns 403 to Interviewers, and an idempotent `seed` command creates one user per role. 43 tests pass; `ruff check` and `ruff format` are clean. All six Phase 1 acceptance criteria are ticked.
+- **Changes:**
+  - `pyproject.toml`, `uv.lock`, `.python-version`: the uv project, dependencies, and Ruff and pytest settings.
+  - `manage.py`, `config/settings.py`, `config/urls.py`, `config/asgi.py`, `config/wsgi.py`: project settings, including `LoginRequiredMiddleware`, `TIME_ZONE = "America/Chicago"`, Tailwind/DaisyUI settings and the console email backend.
+  - `accounts/roles.py`: pure role checks (`is_admin`, `has_role`, `can_make_changes`, `role_label`) and the role constants.
+  - `accounts/mixins.py`: `RoleRequiredMixin`, the shared server-side refusal (403) for Interviewers, which later views narrow with `allowed_roles`.
+  - `accounts/templatetags/accounts_tags.py`: the `role_label` and `can_make_changes` filters, so templates reuse the same rules.
+  - `accounts/views.py`, `accounts/urls.py`: the home page (`accounts:home`), login and logout. There is no sign-up route.
+  - `accounts/migrations/0001_create_role_groups.py`: a data migration that creates Recruiter, Hiring Manager and Interviewer.
+  - `accounts/management/commands/seed.py`: an idempotent seed that creates admin, recruiter, manager and interviewer with the password `demo-pass-123`.
+  - `templates/base.html`, `templates/registration/login.html`, `templates/accounts/home.html`: the layout, the login page and the welcome page.
+  - `assets/css/source.css`: the Tailwind source with the DaisyUI `corporate`/`business` themes. `static/css/.gitkeep` holds the built-CSS folder.
+  - `conftest.py`, `accounts/tests/`: role fixtures plus tests for the role functions, groups, mixin (through the test-only `accounts/tests/urls.py`), login/logout/no-sign-up/layout, and seed idempotency.
+  - `docs/TESTING.md`: the new testing guide. `CLAUDE.md`: new Conventions, Commands and "Read before…" sections.
+  - `.gitignore`: ignores the downloaded Tailwind binary and the built CSS.
+  - `plans/applicant-tracking-system.md`: Phase 1 criteria ticked.
+- **Follow-up (prompt 3), visual polish and responsive layout:** 49 tests pass; Ruff is clean.
+  - `templates/skeleton.html` (new): the page shell, with the theme script, HTMX, the favicon and a skip link. Login extends it directly.
+  - `templates/base.html`: now a DaisyUI drawer. Below `lg` there is a menu button and a slide-in sidebar with the logo, a user card, nav, Manage staff and Log out; at `lg` and up there is a sticky top bar with horizontal nav. Content enters with a subtle `animate-rise`, and there is a footer.
+  - `templates/partials/` (new): `nav_links.html` (one list shared by both menus, with `aria-current` on the active link), `logo.html` (a gradient briefcase mark that tilts on hover), `avatar.html` (initials), `theme_toggle.html` and `messages.html`.
+  - `templates/registration/login.html`: a gradient brand panel on large screens, plus inputs with icons and a log-in icon button.
+  - `templates/accounts/home.html`: a welcome card with an accent stripe, avatar and role badge, and an info alert with an eye icon for view-only users.
+  - `config/templatetags/icons.py` (new): the builtin `{% icon %}` tag, which inlines SVGs from `templates/icons/` (14 icons from lucide-static v1.49.0, downloaded at a pinned version, ISC license). `config/settings.py` registers it.
+  - `static/img/logo.svg` (new): the favicon. `assets/css/source.css` defines the `rise` keyframes, with `motion-reduce:` fallbacks throughout.
+  - `config/tests/test_icons.py` (new), `accounts/tests/test_auth_views.py`: tests for the icon tag, the drawer and sidebar markup, and the login page having no nav.
+  - `README.md` rewritten (features, stack, setup, demo accounts, layout, credits). `CLAUDE.md` conventions now cover templates, icons and motion.
+- **TDD:** Skipped, as the plan says: Phase 1 is setup and configuration. The login redirect and the Interviewer 403 got ordinary tests.
+- **Decisions:** Kept Django's built-in `User` model. Required a login everywhere through `LoginRequiredMiddleware`. Put the home page at `/` as `accounts:home`. `RoleRequiredMixin` refuses Interviewers and users without a role by default, and is tested through a test-only URLconf instead of a dummy app view. Logout is a POST form. Used DaisyUI `corporate` (light) and `business` (dark) to match the prototypes, with the choice remembered in localStorage. HTMX is pinned to 2.0.4 on jsDelivr, with CSRF sent through `hx-headers`. Seed usernames are admin, recruiter, manager and interviewer; re-running only fixes fields that differ. Used Django 6.1's generated `MAILERS` email setting.
+- **Deviations:** None. The brief was approved as proposed. After the build, I asked for more visual polish (icons, subtle animations, a logo), a README rewrite, and a responsive layout: a sidebar on small screens and a top bar on larger ones. The agent used lg (1024px) as the switch point, Lucide for icons, and a gradient briefcase logo mark.
+- **Sideways:** The first login template used DaisyUI v4 classes (`form-control`, `label-text`, `input-bordered`), which v5 removed. This was caught before building and switched to v5 `fieldset` markup. The first `tailwind build` seemed to hang and was stopped. It was downloading the 112 MB Tailwind CLI with no visible output, and a re-run in the background finished fine. During the polish, headless-Edge screenshots caught a stretched, pill-shaped avatar: DaisyUI only styles `div` children of `.avatar`, so the `span` markup was switched to `div`. They also caught a stray period after the role badge and a harsh black active-nav pill, now tinted with the primary color. Phone screenshots first looked cropped; headless Edge can't make a window narrower than about 500px, so they were retaken inside a 390px iframe. One shell heredoc failed to parse, wrote nothing, and was redone with the file tool.
+
 ## 2026-10-19 — /to-prd and /prd-to-plan: PRD and 14-phase plan with TDD candidates
 
 ### Prompts
