@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build one phase of a feature plan end to end — read the PRD and plan, decide whether to delegate to the tdd skill, implement and test the phase, write a manual browser test guide, log the session in PROMPTS.md, and offer to commit and push. Use when the user runs /implement.
+description: Build one phase of a feature plan end to end — read the PRD and plan, follow the phase's TDD section, implement and test the phase, write a manual browser test guide, and log the session in PROMPTS.md. Never commits. Use when the user runs /implement.
 argument-hint: "<feature> [phase <N>] [tdd|no-tdd] [notes]"
 disable-model-invocation: true
 ---
@@ -8,7 +8,8 @@ disable-model-invocation: true
 # Implement
 
 Build one phase of `plans/<feature>.md` against `prd/<feature>.md`, from
-reading the plan through to the commit.
+reading the plan through to the PROMPTS.md entry. Never stage, commit or
+push; the user does that themselves.
 
 ## 1. Find the phase
 
@@ -41,22 +42,17 @@ Fill any gaps from the PRD first, then from the codebase's existing patterns.
 Ask only when the answer is genuinely the user's call and it changes what gets
 built.
 
-## 3. Decide on TDD
+## 3. Follow the phase's TDD section
 
-Delegate to the `tdd` skill when the phase has at least one behavior where a
-wrong implementation would be costly and easy to miss by eye:
+The TDD decision is already made in the plan. Read the phase's `### TDD`
+section and follow it; do not propose candidates of your own.
 
-- permissions, privacy, or who can see or change what
-- eligibility and business rules
-- state transitions, database constraints, or invariants
-- calculations, aggregations, or queries with edge cases
-- security: sign-in, tokens, cooldowns, the audit log
-- a public function in one of the four deep modules
+- **It lists candidates:** delegate to the `tdd` skill with exactly those
+  behaviors, and tell it to use them instead of selecting its own.
+- **It says no TDD:** skip TDD. The phase gets ordinary tests.
 
-Skip TDD when the phase is only templates, styling, copy, seed data,
-configuration or documentation, or when it wires up something that follows
-an existing, tested pattern without adding a new rule. If the user passed
-`tdd` or `no-tdd`, that overrides this decision.
+If the user passed `tdd` or `no-tdd`, or named different behaviors, that
+overrides the plan.
 
 ## 4. Brief, then stop once
 
@@ -65,10 +61,10 @@ Present all of this in one message:
 - the phase title, plus a few lines on what will be built
 - the areas and files expected to change, including any migrations
 - the decisions you made where the plan left a gap
-- the TDD decision: yes or no, with one sentence on why
+- the TDD decision from the plan: the candidate behaviors, or "no TDD"
 
-**With TDD:** invoke the `tdd` skill now and include its behavior list in
-this message. The approval it asks for is this step's stop.
+**With TDD:** invoke the `tdd` skill now with the plan's candidates and
+include them in this message. The approval it asks for is this step's stop.
 
 **Without TDD:** stop for approval.
 
@@ -147,25 +143,8 @@ established shape, with a **Changes** list added:
     - **Deviations:** recommendations the user overrode, follow-up questions
     - **Sideways:** failures and wrong turns, and how they were caught
 
-Write the entry before step 8, so the commit includes it.
+## 8. Finish
 
-## 8. Offer to commit and push
-
-Show `git status --short`. Then propose a commit message that follows the
-repo's history:
-
-    Added Phase <N>/<M> of <Feature title> - <what the phase delivers>
-
-For the feature title, use the one that earlier commits for this feature
-used. If there are none, use the plan's title.
-
-Ask with AskUserQuestion. Offer "Commit and push", "Commit only" and "Don't
-commit".
-
-- Stage files one path at a time; never use `git add -A` or `git add .`.
-  - Always stage: the files this phase changed, the plan, and `PROMPTS.md`.
-  - Stage only if the user says to: files that were already modified before
-    the phase began (from step 1), `db.sqlite3`, and the PRD if it is
-    untracked. List them in the question.
-- Commit on the current branch.
-- If the push fails, report the error. Never force-push.
+End with `git status --short` so the user can see what changed, noting any
+files that were already modified before the phase began (from step 1). Do
+not stage, commit or push.
