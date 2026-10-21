@@ -1,0 +1,81 @@
+{% load accounts_tags %}
+{% comment %}
+An opening's Skills section. Rendered on the opening's page, and on its own
+after an HTMX add or remove, which swaps it into #opening-skills. Expects
+`opening`, `skills`, `skill_form`, `skill_suggestions`, and optionally
+`skill_status` with `skill_status_kind` ("success" or "error").
+{% endcomment %}
+{% with can_edit=user|can_manage_opening_skills:opening %}
+<section id="opening-skills" class="mt-6" aria-labelledby="skills-heading" data-testid="skills-section">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 id="skills-heading" class="flex items-center gap-2 text-lg font-bold">
+      {% icon "graduation-cap" "size-5 opacity-70" %} Skills
+      {% if skills %}<span class="badge badge-sm badge-ghost" data-testid="skill-count">{{ skills|length }}</span>{% endif %}
+    </h2>
+    <a href="{% url 'skills:list' %}" class="link link-hover text-sm opacity-70">All skills</a>
+  </div>
+
+  <div class="mt-2 rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
+    {% if skill_status and skill_status_kind == "success" %}
+    <div role="status" class="alert alert-success alert-soft mb-3 py-2 text-sm animate-rise motion-reduce:animate-none" data-testid="skill-status">
+      <span>{{ skill_status }}</span>
+    </div>
+    {% elif skill_status and not skill_form.errors %}
+    {# Errors about the typed name show under the box instead. #}
+    <div role="alert" class="alert alert-error alert-soft mb-3 py-2 text-sm" data-testid="skill-status">
+      <span>{{ skill_status }}</span>
+    </div>
+    {% endif %}
+
+    {% if skills %}
+    <ul class="flex flex-wrap gap-2" data-testid="skills">
+      {% for skill in skills %}
+      <li class="badge badge-lg h-auto min-h-8 gap-1.5 py-1 {% if skill.is_active %}badge-primary badge-soft{% else %}badge-ghost opacity-70{% endif %}" data-testid="skill">
+        <span class="break-all">{{ skill.name }}</span>
+        {% if not skill.is_active %}<span class="badge badge-xs badge-outline" data-testid="skill-retired" title="Retired: it stays here, but no opening can add it.">Retired</span>{% endif %}
+        {% if can_edit %}
+        <form method="post" action="{% url 'openings:skill_detach' opening.pk skill.pk %}"
+              hx-post="{% url 'openings:skill_detach' opening.pk skill.pk %}" hx-target="#opening-skills" hx-swap="outerHTML">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-circle btn-xs -mr-1" data-testid="skill-detach" aria-label="Remove {{ skill.name }} from {{ opening.title }}">
+            {% icon "x" "size-3.5" %}
+          </button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-sm opacity-70" data-testid="skills-empty">No skills listed yet.{% if can_edit %} Add the first one below.{% endif %}</p>
+    {% endif %}
+
+    {% if can_edit %}
+    <form method="post" action="{% url 'openings:skill_attach' opening.pk %}"
+          hx-post="{% url 'openings:skill_attach' opening.pk %}" hx-target="#opening-skills" hx-swap="outerHTML"
+          class="mt-4 border-t border-base-300 pt-4" data-testid="skill-add-form" novalidate>
+      {% csrf_token %}
+      {% with field=skill_form.name %}
+      <label class="fieldset-legend pt-0 text-sm" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      <div class="flex flex-wrap gap-2">
+        <div class="min-w-0 flex-1 basis-48">{{ field }}</div>
+        <button type="submit" class="btn btn-primary gap-2">{% icon "plus" "size-4" %} Add</button>
+      </div>
+      {% if field.errors %}
+      {% for error in field.errors %}<p class="mt-1 text-sm text-error" role="alert" data-testid="error-skill-name">{{ error }}</p>{% endfor %}
+      {% else %}
+      <p class="label mt-1 whitespace-normal text-xs">{{ field.help_text }}</p>
+      {% endif %}
+      {% endwith %}
+      <datalist id="skill-suggestions">
+        {% for suggestion in skill_suggestions %}<option value="{{ suggestion.name }}"></option>{% endfor %}
+      </datalist>
+    </form>
+    {% else %}
+    <p class="mt-3 flex items-center gap-1.5 text-sm opacity-70" data-testid="skills-read-only">
+      {% icon "eye" "size-4 shrink-0" %}
+      <span>Only Admins, Hiring Managers and this opening's designated authority can change its skills.</span>
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endwith %}

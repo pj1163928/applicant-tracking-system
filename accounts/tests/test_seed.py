@@ -6,8 +6,10 @@ from accounts.management.commands.seed import (
     SEED_APPLICATIONS,
     SEED_CANDIDATES,
     SEED_MOVES,
+    SEED_OPENING_SKILLS,
     SEED_OPENINGS,
     SEED_PASSWORD,
+    SEED_SKILLS,
     SEED_SOURCES,
     seed_moves,
 )
@@ -16,7 +18,7 @@ from applications.models import Application, StageChange
 from applications.services import move_application, prefill_source
 from applications.stages import Stage, can_move, requires_note
 from candidates.models import Candidate, Source
-from openings.models import JobOpening
+from openings.models import JobOpening, OpeningSkill, Skill
 
 pytestmark = pytest.mark.django_db
 
@@ -38,7 +40,9 @@ def snapshot():
     openings = list(JobOpening.objects.order_by("pk").values())
     applications = list(Application.objects.order_by("pk").values())
     stage_changes = list(StageChange.objects.order_by("pk").values())
-    return users, candidates, sources, openings, applications, stage_changes
+    skills = list(Skill.objects.order_by("pk").values())
+    opening_skills = list(OpeningSkill.objects.order_by("pk").values())
+    return users, candidates, sources, openings, applications, stage_changes, skills, opening_skills
 
 
 def test_seed_creates_one_user_per_role():
@@ -284,3 +288,39 @@ def test_seed_moves_a_path_completely_or_not_at_all():
 def stored_path(application) -> tuple[str, int]:
     fresh = Application.objects.get(pk=application.pk)
     return fresh.stage, fresh.stage_changes.count()
+
+
+def skill_names(opening: JobOpening) -> set[str]:
+    return set(opening.skills.values_list("name", flat=True))
+
+
+def test_seed_lists_skills_on_every_opening_sharing_some_and_keeping_a_retired_one():
+    call_command("seed")
+
+    assert Skill.objects.count() == len(SEED_SKILLS)
+    assert list(Skill.objects.retired().values_list("name", flat=True)) == ["jQuery"]
+    for title, names in SEED_OPENING_SKILLS:
+        assert skill_names(JobOpening.objects.get(title=title)) == set(names)
+    # The same skill is shared by several openings.
+    assert Skill.objects.get(name="Python").openings.count() == 3
+    # A retired skill stays on the opening that listed it.
+    assert "jQuery" in skill_names(JobOpening.objects.get(title="Backend Developer"))
+
+
+def test_rerunning_seed_keeps_staff_changes_to_skills():
+    call_command("seed")
+    backend = JobOpening.objects.get(title="Backend Developer")
+    backend.skills.remove(Skill.objects.get(name="jQuery"))  # staff remove a skill
+    backend.skills.add(Skill.objects.create(name="Docker"))  # and add one of their own
+    Skill.objects.get(name="Figma").retire()  # a Hiring Manager retires a seeded skill
+    Skill.objects.get(name="jQuery").reactivate()  # and brings back the retired one
+    sql = Skill.objects.get(name="SQL")
+    sql.name = "sql"  # a change of capitals is the same skill
+    sql.save()
+
+    call_command("seed")
+
+    assert skill_names(backend) == {"Python", "Django", "sql", "Docker"}
+    assert Skill.objects.get(name="Figma").is_active is False
+    assert Skill.objects.get(name="jQuery").is_active is True
+    assert Skill.objects.count() == len(SEED_SKILLS) + 1  # Docker, and no second SQL

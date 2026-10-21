@@ -102,6 +102,15 @@ def eligible_authorities() -> QuerySet[User]:
     )
 
 
+def is_eligible_authority_of(user: AnyUser, opening: "JobOpening") -> bool:
+    """Return True if the user is ``opening``'s designated authority and still eligible to be one.
+
+    The per-opening rules (``can_make_offer``, ``can_manage_opening_skills``)
+    grant their action to this user on this opening only.
+    """
+    return user.pk == opening.designated_authority_id and can_be_designated_authority(user)
+
+
 # Roles that may make offers on every opening. Admins always pass role checks.
 OFFER_ROLES: tuple[str, ...] = (HIRING_MANAGER,)
 
@@ -114,6 +123,32 @@ def can_make_offer(user: AnyUser, opening: "JobOpening") -> bool:
     a Recruiter, Hiring Manager or Admin). Being allowed to move stages, or
     ``is_staff``, never grants it. Closed openings follow the same rule.
     """
-    if has_role(user, *OFFER_ROLES):
-        return True
-    return user.pk == opening.designated_authority_id and can_be_designated_authority(user)
+    return has_role(user, *OFFER_ROLES) or is_eligible_authority_of(user, opening)
+
+
+# Roles that manage every opening's skills. Admins always pass role checks.
+# An opening's designated authority also manages that opening's skills.
+SKILL_MANAGER_ROLES: tuple[str, ...] = (HIRING_MANAGER,)
+
+
+def can_manage_opening_skills(user: AnyUser, opening: "JobOpening") -> bool:
+    """Return True if the user may attach, detach or create skills on ``opening``.
+
+    That is an active Admin, an active Hiring Manager, or the opening's
+    designated authority while they are still eligible to be one. Being the
+    authority covers that opening only, and never covers retiring a skill
+    (``can_retire_skills``).
+    """
+    return has_role(user, *SKILL_MANAGER_ROLES) or is_eligible_authority_of(user, opening)
+
+
+# Roles that retire and reactivate skills for every opening. Admins always pass role checks.
+SKILL_RETIRER_ROLES: tuple[str, ...] = (HIRING_MANAGER,)
+
+
+def can_retire_skills(user: AnyUser) -> bool:
+    """Return True if the user may retire or reactivate skills: an Admin or a Hiring Manager.
+
+    Being an opening's designated authority never grants it.
+    """
+    return has_role(user, *SKILL_RETIRER_ROLES)

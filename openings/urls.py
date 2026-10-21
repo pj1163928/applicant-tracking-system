@@ -1,7 +1,14 @@
 from django.urls import path
 
 from applications.views import PipelineBoardView
-from openings.views import OpeningCreateView, OpeningDetailView, OpeningListView, OpeningUpdateView
+from openings.views import (
+    OpeningCreateView,
+    OpeningDetailView,
+    OpeningListView,
+    OpeningSkillAttachView,
+    OpeningSkillDetachView,
+    OpeningUpdateView,
+)
 
 app_name = "openings"
 
@@ -10,6 +17,12 @@ urlpatterns = [
     path("new/", OpeningCreateView.as_view(), name="create"),
     path("<int:pk>/", OpeningDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", OpeningUpdateView.as_view(), name="update"),
+    path("<int:pk>/skills/add/", OpeningSkillAttachView.as_view(), name="skill_attach"),
+    path(
+        "<int:pk>/skills/<int:skill_pk>/remove/",
+        OpeningSkillDetachView.as_view(),
+        name="skill_detach",
+    ),
     # The board belongs to the applications app, but lives under its opening.
     path("<int:pk>/board/", PipelineBoardView.as_view(), name="board"),
 ]

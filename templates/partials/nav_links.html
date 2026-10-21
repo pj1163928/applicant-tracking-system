@@ -25,5 +25,10 @@ request.resolver_match.namespace == "<app>" (for example "candidates").
     {% icon "signpost" "size-5" %} Sources
   </a>
 </li>
+<li>
+  <a href="{% url 'skills:list' %}" class="{% if section == 'skills' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'skills' %} aria-current="page"{% endif %}>
+    {% icon "graduation-cap" "size-5" %} Skills
+  </a>
+</li>
 {% endwith %}
 {% endwith %}

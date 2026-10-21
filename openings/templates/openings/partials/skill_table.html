@@ -1,0 +1,46 @@
+{% load accounts_tags %}
+{% comment %}
+The active and retired skill lists. Rendered inside the skills page, and on
+its own after an HTMX retire or reactivate, which swaps it into #skill-table.
+{% endcomment %}
+<div id="skill-table" class="space-y-8">
+  {% if status %}
+  <div role="status" class="alert alert-success alert-soft animate-rise motion-reduce:animate-none" data-testid="skill-table-status">
+    <span>{{ status }}</span>
+  </div>
+  {% endif %}
+
+  <section aria-labelledby="active-skills-heading">
+    <h2 id="active-skills-heading" class="flex items-center gap-2 text-lg font-bold">
+      Active <span class="badge badge-sm badge-primary badge-soft" data-testid="active-skill-count">{{ active_skills|length }}</span>
+    </h2>
+    {% if active_skills %}
+    <ul class="list mt-2 rounded-box border border-base-300 bg-base-100 shadow-sm" data-testid="active-skills">
+      {% for skill in active_skills %}
+      {% include "openings/partials/skill_row.html" %}
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-6 text-center" data-testid="no-active-skills">
+      {% icon "graduation-cap" "mx-auto size-7 opacity-50" %}
+      <p class="mt-2 font-semibold">No active skills.</p>
+      <p class="text-sm opacity-70">Type a new skill into an opening's Skills section to create it.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="retired-skills-heading">
+    <h2 id="retired-skills-heading" class="flex items-center gap-2 text-lg font-bold">
+      Retired <span class="badge badge-sm badge-soft" data-testid="retired-skill-count">{{ retired_skills|length }}</span>
+    </h2>
+    {% if retired_skills %}
+    <ul class="list mt-2 rounded-box border border-base-300 bg-base-200/40" data-testid="retired-skills">
+      {% for skill in retired_skills %}
+      {% include "openings/partials/skill_row.html" %}
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-2 text-sm opacity-70" data-testid="no-retired-skills">Nothing retired. Retire a skill when openings should stop adding it; it is never deleted.</p>
+    {% endif %}
+  </section>
+</div>

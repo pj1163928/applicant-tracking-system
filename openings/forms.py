@@ -5,6 +5,7 @@ from accounts.permissions import eligible_authorities
 from accounts.roles import role_label
 from config.forms import DaisyUIFormMixin
 from openings.models import JobOpening
+from openings.services import SKILL_NAME_MAX_LENGTH
 
 
 class AuthorityChoiceField(forms.ModelChoiceField):
@@ -66,3 +67,25 @@ class JobOpeningCreateForm(JobOpeningForm):
             "designated_authority",
             "description",
         ]
+
+
+class SkillAttachForm(DaisyUIFormMixin, forms.Form):
+    """Add a skill to an opening by name: an existing one, or a new one created inline.
+
+    Only the typing is checked here; ``openings.services.attach_skill()``
+    applies the rules (capitals ignored, retired skills refused).
+    """
+
+    name = forms.CharField(
+        label="Add a skill",
+        max_length=SKILL_NAME_MAX_LENGTH,
+        error_messages={"required": "Type a skill name."},
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "off",
+                "list": "skill-suggestions",
+                "placeholder": "For example Python",
+            }
+        ),
+        help_text="Pick a suggestion, or type a new skill to create it.",
+    )

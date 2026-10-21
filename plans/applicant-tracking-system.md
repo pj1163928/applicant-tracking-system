@@ -237,7 +237,7 @@ Adds built-in browser drag-and-drop (no SortableJS) to the board's cards and col
 - [x] Dropping onto a column that needs a note opens the note modal first.
 - [x] Dropping onto an illegal column is refused, and the card goes back where it was.
 - [x] The Move menu keeps working, and Interviewers can't drag.
-- [ ] A manual browser checklist for drag-and-drop exists and has been followed.
+- [x] A manual browser checklist for drag-and-drop exists and has been followed.
 
 ### TDD
 
@@ -259,11 +259,11 @@ A Skills section on the opening detail page, separate from the edit form.
 
 ### Acceptance criteria
 
-- [ ] Admins, Hiring Managers and the opening's designated authority can attach, detach and create skills without a page reload.
-- [ ] Recruiters and Interviewers see skills read-only, and posting directly is refused.
-- [ ] Skill names are unique regardless of capital letters, and creating "python" when "Python" exists reuses the existing skill.
-- [ ] Only Admins and Hiring Managers can retire a skill. Retired skills can't be attached, but stay on openings that already have them.
-- [ ] The same skill can be attached to many openings.
+- [x] Admins, Hiring Managers and the opening's designated authority can attach, detach and create skills without a page reload.
+- [x] Recruiters and Interviewers see skills read-only, and posting directly is refused.
+- [x] Skill names are unique regardless of capital letters, and creating "python" when "Python" exists reuses the existing skill.
+- [x] Only Admins and Hiring Managers can retire a skill. Retired skills can't be attached, but stay on openings that already have them.
+- [x] The same skill can be attached to many openings.
 
 ### TDD
 

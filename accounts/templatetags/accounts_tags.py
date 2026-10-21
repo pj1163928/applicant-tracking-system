@@ -53,3 +53,15 @@ def can_move_applications(user: roles.AnyUser) -> bool:
 def can_make_offer(user: roles.AnyUser, opening) -> bool:
     """Whether Offer and Hired are open to the user: ``{% if user|can_make_offer:opening %}``."""
     return permissions.can_make_offer(user, opening)
+
+
+@register.filter
+def can_manage_opening_skills(user: roles.AnyUser, opening) -> bool:
+    """Show skill add and remove controls: ``{% if user|can_manage_opening_skills:opening %}``."""
+    return permissions.can_manage_opening_skills(user, opening)
+
+
+@register.filter
+def can_retire_skills(user: roles.AnyUser) -> bool:
+    """Show skill retire and reactivate actions: ``{% if user|can_retire_skills %}``."""
+    return permissions.can_retire_skills(user)

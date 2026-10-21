@@ -28,6 +28,76 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-20 — Applicant Tracking System: Phase 8/14, Skills on openings
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 8`.
+2. Ok looks good go to first phase
+3. Looks good make sure that the distinction between opning authority exists where it grands permission to manage skills only on that openin, never to retire skills.
+4. Ok go ahead and impllement can_manage_opening_skills(user, opening) and can_retire_skills(user) and make sure the match the nine-row testing matrix, use existing roles and authority checks whenever possible. Other than that continue on to building
+
+### Summary
+
+- **Outcome:** Skills on openings.
+  - Each opening's page has a **Skills** section, separate from the Edit form. Skills show as chips, and a retired skill still listed there is marked "Retired".
+  - **Managers** are Admins, Hiring Managers, and the opening's designated authority (on that opening only). They get an "Add a skill" box that suggests active skills the opening doesn't list yet, plus an × on each chip.
+    - Typing a name finds the existing skill ignoring capitals and extra spaces ("python" adds "Python"). A new skill is created only when nothing matches, and keeps the capitals it was typed with.
+    - Retired, already-listed, blank or overlong names are refused with a message under the box.
+    - Adding and removing swap only the Skills section through HTMX. Without HTMX, they redirect back with a message.
+  - **Everyone else** sees the skills with a read-only note, and a direct POST gets a 403.
+  - **A new `/skills/` page** (nav: Skills) lists active and retired skills, each with how many openings list it. Only Admins and Hiring Managers can retire or reactivate a skill there (HTMX swaps the table). A retired skill stays on the openings that already list it, but no opening can add it.
+  - **Deleting:** a skill can't be deleted, in the Django admin or in the database (PROTECT).
+  - **Seed:** 11 skills. Python, SQL, Accessibility and User research are shared across openings. jQuery is retired but still on Backend Developer.
+  - **Checks:** 593 tests pass (73 new). `ruff check` and `ruff format` are clean. One migration (`openings/0002_skill`). Seed was run twice on the dev database; the second run changed nothing. All five Phase 8 criteria are ticked.
+- **Changes:**
+  - `accounts/permissions.py`:
+    - new `SKILL_MANAGER_ROLES` and `can_manage_opening_skills(user, opening)`, and `SKILL_RETIRER_ROLES` and `can_retire_skills(user)`;
+    - new `is_eligible_authority_of(user, opening)`, now shared by `can_make_offer` and `can_manage_opening_skills` (prompt 4: reuse the existing authority check).
+  - `accounts/templatetags/accounts_tags.py`: the filters `can_manage_opening_skills:opening` and `can_retire_skills`.
+  - `openings/models.py`:
+    - `Skill`: name unique ignoring case through a `Lower("name")` constraint, `is_active`, `retire()` and `reactivate()`, a field-level duplicate error, and a queryset with `active()`, `retired()` and `named()`;
+    - `OpeningSkill`, the through table, with PROTECT on the skill and a unique (opening, skill) pair;
+    - `JobOpening.skills`.
+  - `openings/migrations/0002_skill.py`: the new tables.
+  - `openings/services.py` (new): `clean_skill_name`, `find_or_create_skill`, `manage_refusal`, `attach_skill` and `detach_skill`.
+  - `openings/forms.py`: `SkillAttachForm` (one name box linked to the suggestions list).
+  - `openings/views.py`:
+    - `skills_section_context`, and the opening detail page now shows the section;
+    - `OpeningSkillsMixin`, which gives a 403 unless `can_manage_opening_skills` allows the user on that opening;
+    - `OpeningSkillAttachView`, `OpeningSkillDetachView`, `SkillListView` and `SkillActivationView` (`allowed_roles = SKILL_RETIRER_ROLES`).
+  - `openings/urls.py`: `skill_attach` and `skill_detach`. New `openings/skill_urls.py` (`skills:` namespace), mounted at `/skills/` in `config/urls.py`.
+  - Templates:
+    - `openings/partials/skills_section.html` (new), included in `jobopening_detail.html`;
+    - `openings/skill_list.html`, `partials/skill_table.html` and `partials/skill_row.html` (new);
+    - a Skills link in `templates/partials/nav_links.html`;
+    - `templates/icons/graduation-cap.svg`, copied from lucide-static v1.49.0.
+  - `openings/admin.py`: `SkillAdmin`, with deleting turned off.
+  - `accounts/management/commands/seed.py`: `SEED_SKILLS`, `SEED_OPENING_SKILLS`, `seed_skill` and `seed_opening_skills`.
+  - Tests:
+    - `accounts/tests/test_permissions.py`: the skills permission matrix;
+    - `openings/tests/test_skill_models.py`, `test_skill_services.py` and `test_skill_views.py` (new);
+    - `openings/tests/conftest.py`: the fixtures `authority` and `skilled_opening`;
+    - `accounts/tests/test_seed.py`: skills added to the run-twice snapshot, plus two new tests.
+  - `CLAUDE.md`: the skills conventions (the permission rules, the services, the `skills:` namespace, the new filters).
+  - `plans/applicant-tracking-system.md`: Phase 8's criteria ticked.
+- **TDD:** the plan's two candidates, as approved.
+  1. **`can_manage_opening_skills` and `can_retire_skills`:** one parametrized test, RED on 3 rows with stubs that always returned False. After prompt 3, it gained a column for someone else's opening, so it proves the authority's right stops at their own opening and never covers retiring. The final table covers Admin, Hiring Manager, the authority, another Recruiter, an authority later changed to Interviewer, Interviewer, no role, inactive Hiring Manager and inactive Admin.
+  2. **Adding by name reuses the existing skill regardless of case:** "python", "PYTHON" and "  Python  " each attach the existing "Python", with no near-duplicate. RED against a stub `attach_skill` that returned None.
+- **Decisions:**
+  - Retiring happens on a separate `/skills/` page modelled on Sources, not on the opening page, since retiring affects every opening. Reactivating was added there to match Sources.
+  - One box both adds and creates. Refusals (blank, too long, retired, already listed) come back with a 200 and the message under the box; permission refusals are 403s.
+  - A retired skill that's already on an opening can still be removed, but can't be added back.
+  - `OpeningSkill` was added as the through table so the skill side can use PROTECT, as the PRD says.
+  - Seed gives an opening its sample skills only if it lists none yet, so staff changes survive a re-run. The one edge case: if staff remove every skill from a seeded opening, the next seed run adds the samples back. Seed links skills directly, not through `attach_skill`, so a retired skill can already be on an opening.
+- **Deviations:**
+  - Prompt 3 asked for the permission test to make the "authority only on their own opening" rule explicit, so a someone-else's-opening column was added before GREEN.
+  - Prompt 4 asked for both permission functions to be implemented against the matrix. They already were (GREEN in cycle 1), so the work went into pulling the shared authority check into `is_eligible_authority_of`.
+- **Sideways:**
+  - Two Bash heredocs containing Python with apostrophes failed to parse ("unexpected EOF"), and nothing ran. The edits were redone through script files and the Write tool.
+  - `ruff check` flagged one import-block blank line in `openings/models.py`; `ruff check --fix` fixed it.
+  - `plans/applicant-tracking-system.md` already had the user's own tick on Phase 7's last criterion before this phase began. It was left as it was.
+
 ## 2026-10-20 — Applicant Tracking System: Phase 7/14, Drag-and-drop on the board
 
 ### Prompts

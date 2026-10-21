@@ -6,9 +6,11 @@ from accounts.permissions import (
     can_make_offer,
     can_manage_applications,
     can_manage_candidates,
+    can_manage_opening_skills,
     can_manage_openings,
     can_manage_sources,
     can_move_applications,
+    can_retire_skills,
     eligible_authorities,
 )
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
@@ -242,3 +244,44 @@ def test_elevated_flags_or_move_rights_never_stand_in_for_offer_authority(
     assert can_make_offer(recruiter, rileys_opening) is False
     assert can_make_offer(staff_without_role, rileys_opening) is False
     assert can_make_offer(AnonymousUser(), rileys_opening) is False
+
+
+@pytest.fixture
+def riley_demoted(riley):
+    """Riley, still named as ``rileys_opening``'s authority, but now only an Interviewer."""
+    make_interviewer(riley)
+    return riley
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "manages_own", "manages_elsewhere", "retires_skills"),
+    [
+        ("admin", True, True, True),
+        ("hiring_manager", True, True, True),
+        # Riley is the authority of rileys_opening only: she manages its skills,
+        # no other opening's, and never retires a skill.
+        ("riley", True, False, False),
+        ("recruiter", False, False, False),  # a Recruiter, but not this opening's authority
+        ("riley_demoted", False, False, False),  # named as authority, but no longer eligible
+        ("interviewer", False, False, False),
+        ("no_role_user", False, False, False),
+        ("inactive_manager", False, False, False),
+        ("inactive_admin", False, False, False),
+    ],
+)
+def test_who_may_manage_an_openings_skills_and_who_may_retire_skills(
+    request,
+    user_fixture,
+    manages_own,
+    manages_elsewhere,
+    retires_skills,
+    rileys_opening,
+    make_opening,
+    make_user,
+):
+    someone_elses = make_opening("Backend Developer", make_user("other-manager", HIRING_MANAGER))
+    user = request.getfixturevalue(user_fixture)
+
+    assert can_manage_opening_skills(user, rileys_opening) is manages_own
+    assert can_manage_opening_skills(user, someone_elses) is manages_elsewhere
+    assert can_retire_skills(user) is retires_skills

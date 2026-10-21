@@ -1,0 +1,35 @@
+{% load accounts_tags %}
+{% comment %}One skill in the skills table. Expects `skill`, annotated with `opening_count`.{% endcomment %}
+<li class="list-row items-center transition-colors hover:bg-base-200/60 motion-reduce:transition-none" data-testid="skill-row">
+  <div class="grid size-10 place-items-center rounded-box {% if skill.is_active %}bg-primary/10 text-primary{% else %}bg-base-300/60 text-base-content/60{% endif %}" aria-hidden="true">
+    {% icon "graduation-cap" "size-5" %}
+  </div>
+
+  <div class="list-col-grow min-w-0">
+    <p class="truncate font-semibold{% if not skill.is_active %} opacity-70{% endif %}">{{ skill.name }}</p>
+    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm opacity-70" data-testid="skill-usage">
+      {% if skill.opening_count %}Listed on {{ skill.opening_count }} opening{{ skill.opening_count|pluralize }}{% else %}Not on any opening{% endif %}
+      {% if not skill.is_active %}<span class="badge badge-xs badge-outline opacity-80">Retired</span>{% endif %}
+    </p>
+  </div>
+
+  {% if user|can_retire_skills %}
+  {% if skill.is_active %}
+  <form method="post" action="{% url 'skills:retire' skill.pk %}"
+        hx-post="{% url 'skills:retire' skill.pk %}" hx-target="#skill-table" hx-swap="outerHTML">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm gap-1.5" data-testid="skill-retire" aria-label="Retire {{ skill.name }}">
+      {% icon "archive" "size-4" %}<span class="hidden sm:inline">Retire</span>
+    </button>
+  </form>
+  {% else %}
+  <form method="post" action="{% url 'skills:reactivate' skill.pk %}"
+        hx-post="{% url 'skills:reactivate' skill.pk %}" hx-target="#skill-table" hx-swap="outerHTML">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm gap-1.5 text-success" data-testid="skill-reactivate" aria-label="Reactivate {{ skill.name }}">
+      {% icon "archive-restore" "size-4" %}<span class="hidden sm:inline">Reactivate</span>
+    </button>
+  </form>
+  {% endif %}
+  {% endif %}
+</li>

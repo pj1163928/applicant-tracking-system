@@ -17,7 +17,8 @@ from applications.models import Application
 from applications.services import move_application, record_application
 from applications.stages import Stage
 from candidates.models import Candidate, Source
-from openings.models import JobOpening
+from openings.models import JobOpening, OpeningSkill, Skill
+from openings.services import find_or_create_skill
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -147,6 +148,39 @@ SEED_OPENINGS: tuple[SeedOpening, ...] = (
 
 
 @dataclass(frozen=True)
+class SeedSkill:
+    name: str  # the natural key, matched ignoring capitals as the database does
+    is_active: bool = True  # applied only when seed creates the skill
+
+
+# Phase 8. Python, SQL, Accessibility and User research are shared by several openings.
+# jQuery is retired but stays on Backend Developer, to show a retired skill on an opening.
+SEED_SKILLS: tuple[SeedSkill, ...] = (
+    SeedSkill("Python"),
+    SeedSkill("Django"),
+    SeedSkill("SQL"),
+    SeedSkill("JavaScript"),
+    SeedSkill("Test automation"),
+    SeedSkill("Data modeling"),
+    SeedSkill("Figma"),
+    SeedSkill("User research"),
+    SeedSkill("Accessibility"),
+    SeedSkill("Customer service"),
+    SeedSkill("jQuery", is_active=False),
+)
+
+# Phase 8. Each seeded opening's title, and the seeded skills it lists.
+SEED_OPENING_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Backend Developer", ("Python", "Django", "SQL", "jQuery")),
+    ("QA Analyst", ("Test automation", "Python", "JavaScript")),
+    ("UX Researcher", ("User research", "Accessibility")),
+    ("Data Engineer", ("Python", "SQL", "Data modeling")),
+    ("Support Specialist", ("Customer service",)),
+    ("Product Designer", ("Figma", "Accessibility", "User research")),
+)
+
+
+@dataclass(frozen=True)
 class SeedApplication:
     candidate: str  # a seeded candidate's email; (candidate, opening) is the natural key
     opening: str  # a seeded opening's title
@@ -245,8 +279,8 @@ SEED_MOVES: tuple[SeedMove, ...] = (
 
 class Command(BaseCommand):
     help = (
-        "Create one demo user per role, plus sample candidates, sources, openings and "
-        "applications, some moved along the pipeline."
+        "Create one demo user per role, plus sample candidates, sources, openings with "
+        "skills, and applications, some moved along the pipeline."
     )
 
     @transaction.atomic
@@ -263,6 +297,13 @@ class Command(BaseCommand):
         self.stdout.write(f"Sources: {created} created, {len(SEED_SOURCES) - created} checked")
         created = sum(seed_opening(spec)[1] for spec in SEED_OPENINGS)
         self.stdout.write(f"Openings: {created} created, {len(SEED_OPENINGS) - created} checked")
+        created = sum(seed_skill(spec)[1] for spec in SEED_SKILLS)
+        self.stdout.write(f"Skills: {created} created, {len(SEED_SKILLS) - created} checked")
+        results = [seed_opening_skills(title, names) for title, names in SEED_OPENING_SKILLS]
+        self.stdout.write(
+            f"Opening skills: {results.count(CREATED)} openings given skills, "
+            f"{results.count(CHECKED)} checked"
+        )
         recruiter = User.objects.get(username="recruiter")
         results = [seed_application(spec, recruiter) for spec in SEED_APPLICATIONS]
         self.stdout.write(
@@ -372,6 +413,36 @@ def seed_opening(spec: SeedOpening) -> tuple[JobOpening, bool]:
 
 
 CREATED, CHECKED, SKIPPED = "created", "checked", "skipped"
+
+
+def seed_skill(spec: SeedSkill) -> tuple[Skill, bool]:
+    """Create one seeded skill if no skill has its name (ignoring case); return (skill, created).
+
+    An existing skill keeps its name's capitals and its active or retired
+    state, because staff may have retired or reactivated it on purpose.
+    """
+    skill, created = find_or_create_skill(spec.name)
+    if created and not spec.is_active:
+        skill.retire()
+    return skill, created
+
+
+def seed_opening_skills(title: str, names: tuple[str, ...]) -> str:
+    """Give one seeded opening its seeded skills if it lists none yet; return CREATED or CHECKED.
+
+    An opening that already lists any skill is left as it is, since staff may
+    have added or removed skills on purpose. The skills are linked directly,
+    not through ``attach_skill()``: seed recreates a history in which jQuery
+    was listed before it was retired, which staff could no longer do today.
+    """
+    department = next(o.department for o in SEED_OPENINGS if o.title == title)
+    opening = JobOpening.objects.get(title=title, department=department)
+    if opening.skills.exists():
+        return CHECKED
+    OpeningSkill.objects.bulk_create(
+        OpeningSkill(opening=opening, skill=Skill.objects.named(name).get()) for name in names
+    )
+    return CREATED
 
 
 def seed_application(spec: SeedApplication, by: User) -> str:
