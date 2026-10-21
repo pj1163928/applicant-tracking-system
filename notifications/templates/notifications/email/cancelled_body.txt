@@ -1,0 +1,12 @@
+{% autoescape off %}Hello {{ candidate.first_name }},
+
+Thank you for your interest in the {{ opening.title }} position.
+The position has now closed, so we have stopped considering
+applications for it, including yours.
+
+There's nothing you need to do. If anything changes, our team
+will be in touch to complete the next step.
+
+Best wishes,
+The hiring team
+{% endautoescape %}

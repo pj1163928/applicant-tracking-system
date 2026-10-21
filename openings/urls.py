@@ -2,6 +2,8 @@ from django.urls import path
 
 from applications.views import PipelineBoardView
 from openings.views import (
+    OpeningCancelRemainingView,
+    OpeningCloseView,
     OpeningCreateView,
     OpeningDetailView,
     OpeningListView,
@@ -17,6 +19,12 @@ urlpatterns = [
     path("new/", OpeningCreateView.as_view(), name="create"),
     path("<int:pk>/", OpeningDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", OpeningUpdateView.as_view(), name="update"),
+    path("<int:pk>/close/", OpeningCloseView.as_view(), name="close"),
+    path(
+        "<int:pk>/cancel-remaining/",
+        OpeningCancelRemainingView.as_view(),
+        name="cancel_remaining",
+    ),
     path("<int:pk>/skills/add/", OpeningSkillAttachView.as_view(), name="skill_attach"),
     path(
         "<int:pk>/skills/<int:skill_pk>/remove/",

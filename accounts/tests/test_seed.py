@@ -5,6 +5,7 @@ from django.core.management import call_command
 from accounts.management.commands.seed import (
     SEED_APPLICATIONS,
     SEED_CANDIDATES,
+    SEED_CLOSURES,
     SEED_MOVES,
     SEED_OPENING_SKILLS,
     SEED_OPENINGS,
@@ -19,7 +20,9 @@ from applications.services import move_application, prefill_source
 from applications.stages import Stage, can_move, requires_note
 from candidates.models import Candidate, Source
 from candidates.services import unarchive_candidate
-from openings.models import JobOpening, OpeningSkill, Skill
+from notifications.attention import closures_awaiting_decision
+from notifications.models import CandidateMessage
+from openings.models import JobOpening, OpeningEvent, OpeningSkill, Skill
 
 pytestmark = pytest.mark.django_db
 
@@ -43,7 +46,20 @@ def snapshot():
     stage_changes = list(StageChange.objects.order_by("pk").values())
     skills = list(Skill.objects.order_by("pk").values())
     opening_skills = list(OpeningSkill.objects.order_by("pk").values())
-    return users, candidates, sources, openings, applications, stage_changes, skills, opening_skills
+    events = list(OpeningEvent.objects.order_by("pk").values())
+    messages = list(CandidateMessage.objects.order_by("pk").values())
+    return (
+        users,
+        candidates,
+        sources,
+        openings,
+        applications,
+        stage_changes,
+        skills,
+        opening_skills,
+        events,
+        messages,
+    )
 
 
 def test_seed_creates_one_user_per_role():
@@ -188,7 +204,8 @@ def test_seed_records_each_application_with_its_first_history_row():
 
     applications = Application.objects.select_related("opening", "source")
     assert applications.count() == len(SEED_APPLICATIONS)
-    assert all(a.opening.is_open and a.source.is_active for a in applications)
+    # Recorded while every opening was open; Phase 10's closures come afterwards.
+    assert all(a.source.is_active for a in applications)
     first_rows = StageChange.objects.filter(from_stage="")
     assert first_rows.count() == len(SEED_APPLICATIONS)
     assert set(first_rows.values_list("to_stage", "changed_by__username")) == {
@@ -238,12 +255,17 @@ def test_seed_moves_backend_developer_applicants_into_every_column():
         "Product Designer",
     )
     # Every seeded move made sense under the rules: a stage history the app could have written.
+    # A closure that cancels an opening's applicants comes after the seeded paths.
+    cancelled = {spec.opening for spec in SEED_CLOSURES if spec.cancel_by}
     for spec in SEED_MOVES:
         application = Application.objects.get(
             candidate__email=spec.candidate, opening__title=spec.opening
         )
-        assert application.stage == spec.path[-1][0]
-        moves = application.stage_changes.exclude(from_stage="")
+        expected = Stage.REJECTED if spec.opening in cancelled else spec.path[-1][0]
+        assert application.stage == expected
+        moves = application.stage_changes.exclude(from_stage="").exclude(
+            cause=StageChange.Cause.CLOSURE
+        )
         assert moves.count() == len(spec.path)
         for move in moves:
             assert can_move(move.from_stage, move.to_stage)
@@ -345,3 +367,54 @@ def test_rerunning_seed_keeps_staff_changes_to_skills():
     assert Skill.objects.get(name="Figma").is_active is False
     assert Skill.objects.get(name="jQuery").is_active is True
     assert Skill.objects.count() == len(SEED_SKILLS) + 1  # Docker, and no second SQL
+
+
+def test_seed_closes_three_openings_through_the_closure_flow(
+    django_capture_on_commit_callbacks, mailoutbox
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        call_command("seed")
+
+    closed = JobOpening.objects.filter(status=JobOpening.Status.CLOSED)
+    assert set(closed.values_list("title", flat=True)) == {spec.opening for spec in SEED_CLOSURES}
+    for spec in SEED_CLOSURES:
+        event = OpeningEvent.objects.get(opening__title=spec.opening, kind=OpeningEvent.Kind.CLOSED)
+        assert (event.by.username, event.note) == (spec.by, spec.note)
+
+    # UX Researcher's applicants were cancelled, each with one logged email.
+    ux = Application.objects.filter(opening__title="UX Researcher")
+    assert set(ux.values_list("stage", flat=True)) == {Stage.REJECTED}
+    assert set(
+        StageChange.objects.filter(application__in=ux, to_stage=Stage.REJECTED).values_list(
+            "cause", "note", "changed_by__username"
+        )
+    ) == {(StageChange.Cause.CLOSURE, "Position closed.", "manager")}
+    assert sorted(CandidateMessage.objects.values_list("candidate__email", flat=True)) == [
+        "dev.sharma@example.com",
+        "jade.okafor@example.com",
+    ]
+    assert OpeningEvent.objects.filter(kind=OpeningEvent.Kind.APPLICATIONS_CANCELLED).count() == 1
+
+    # QA Analyst still has Ann in progress, so it waits on the manager.
+    manager = User.objects.get(username="manager")
+    items = closures_awaiting_decision(manager)
+    assert [(i.opening.title, i.assigned_to_you) for i in items] == [("QA Analyst", True)]
+    # Two emails to candidates, and one to the manager for each closure with applicants.
+    assert sorted(m.to[0] for m in mailoutbox) == [
+        "dev.sharma@example.com",
+        "jade.okafor@example.com",
+        "manager@example.com",
+        "manager@example.com",
+    ]
+
+
+def test_rerunning_seed_never_recloses_an_opening_staff_reopened():
+    call_command("seed")
+    # Staff reopen QA Analyst (Phase 13 will do this through its own service).
+    JobOpening.objects.filter(title="QA Analyst").update(status=JobOpening.Status.OPEN)
+    before = OpeningEvent.objects.count()
+
+    call_command("seed")
+
+    assert JobOpening.objects.get(title="QA Analyst").is_open
+    assert OpeningEvent.objects.count() == before

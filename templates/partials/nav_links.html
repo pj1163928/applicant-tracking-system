@@ -3,6 +3,7 @@ Main navigation, shared by the top bar and the small-screen sidebar.
 Each later phase adds one <li> for its section, marking it active with
 request.resolver_match.namespace == "<app>" (for example "candidates").
 {% endcomment %}
+{% load notifications_tags %}
 {% with view=request.resolver_match.view_name %}
 <li>
   <a href="{% url 'accounts:home' %}" class="{% if view == 'accounts:home' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if view == 'accounts:home' %} aria-current="page"{% endif %}>
@@ -23,6 +24,13 @@ request.resolver_match.namespace == "<app>" (for example "candidates").
 <li>
   <a href="{% url 'sources:list' %}" class="{% if section == 'sources' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'sources' %} aria-current="page"{% endif %}>
     {% icon "signpost" "size-5" %} Sources
+  </a>
+</li>
+{% attention_count user as attention %}
+<li>
+  <a href="{% url 'notifications:attention' %}" class="{% if section == 'notifications' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'notifications' %} aria-current="page"{% endif %} data-testid="nav-attention">
+    {% icon "bell" "size-5" %} Needs attention
+    {% if attention %}<span class="badge badge-sm badge-warning" data-testid="attention-count" aria-label="{{ attention }} waiting on you">{{ attention }}</span>{% endif %}
   </a>
 </li>
 <li>

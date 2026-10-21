@@ -17,6 +17,7 @@ from accounts.permissions import can_delete_candidates, can_manage_candidates
 from applications.models import Application, StageChange
 from applications.stages import ACTIVE_STAGES
 from candidates.models import Candidate
+from notifications.models import CandidateMessage
 
 ACTIVE_APPLICATION = "active_application"
 
@@ -83,11 +84,12 @@ class DeletionSummary:
     """Everything a permanent delete of one candidate would destroy, for the confirmation page.
 
     Each application's ``history`` holds its stage changes, newest first, as
-    ``applications/partials/history_list.html`` shows them.
-    Candidate messages join this list once they exist (Phase 10).
+    ``applications/partials/history_list.html`` shows them. ``messages`` are
+    every email logged as sent to the candidate, newest first.
     """
 
     applications: list[Application]
+    messages: list[CandidateMessage]
 
     @property
     def stage_change_count(self) -> int:
@@ -95,7 +97,8 @@ class DeletionSummary:
 
 
 def deletion_summary(candidate: Candidate) -> DeletionSummary:
-    """Return what deleting ``candidate`` would destroy: every application and its history."""
+    """Return what deleting ``candidate`` would destroy: every application, its history,
+    and every message sent to them."""
     history = Prefetch(
         "stage_changes",
         queryset=StageChange.objects.select_related("changed_by").order_by("-changed_at", "-pk"),
@@ -106,12 +109,13 @@ def deletion_summary(candidate: Candidate) -> DeletionSummary:
         .select_related("opening", "source")
         .prefetch_related(history)
     )
-    return DeletionSummary(applications=list(applications))
+    messages = candidate.messages.select_related("application__opening")
+    return DeletionSummary(applications=list(applications), messages=list(messages))
 
 
 @transaction.atomic
 def delete_candidate(candidate: Candidate, *, by: User) -> None:
-    """Permanently delete ``candidate`` with all their applications and stage history.
+    """Permanently delete ``candidate`` with all their applications, stage history and messages.
 
     This can't be undone. Raises ``PermissionDenied`` unless ``by`` is an
     active Admin; nothing is deleted when it refuses.

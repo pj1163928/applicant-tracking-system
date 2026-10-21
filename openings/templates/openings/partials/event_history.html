@@ -1,0 +1,28 @@
+{% comment %}
+An opening's event history, newest first. Expects `events` (OpeningEvent rows,
+with `by` loaded).
+{% endcomment %}
+<section class="mt-6" aria-labelledby="history-heading">
+  <h2 id="history-heading" class="flex items-center gap-2 text-lg font-bold">
+    {% icon "history" "size-5" %} History
+    {% if events %}<span class="badge badge-sm badge-ghost">{{ events|length }}</span>{% endif %}
+  </h2>
+  {% if events %}
+  <ol class="mt-2 grid gap-2" data-testid="opening-events">
+    {% for event in events %}
+    <li class="flex items-start gap-3 rounded-box border border-base-300 bg-base-100 p-3" data-testid="opening-event-{{ event.kind }}">
+      <span class="grid size-8 shrink-0 place-items-center rounded-full {% if event.kind == 'closed' %}bg-base-300/70{% else %}bg-error/10 text-error{% endif %}" aria-hidden="true">
+        {% if event.kind == 'closed' %}{% icon "lock" "size-4" %}{% else %}{% icon "user-x" "size-4" %}{% endif %}
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="font-semibold">{{ event.get_kind_display }}</p>
+        <p class="text-sm opacity-70">{{ event.by.get_full_name|default:event.by.username }} · <time datetime="{{ event.at|date:'c' }}">{{ event.at|date:"M j, Y, g:i a" }}</time></p>
+        {% if event.note %}<p class="mt-1 text-sm whitespace-pre-line break-words">{{ event.note }}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="opening-events-empty">Nothing has happened to this opening yet. Closing it, and decisions about its applicants, will be listed here.</p>
+  {% endif %}
+</section>

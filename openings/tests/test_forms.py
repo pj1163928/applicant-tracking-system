@@ -84,9 +84,11 @@ def test_invalid_fields_are_marked_for_styling_and_screen_readers():
     assert "select-error" in authority["class"] and authority["aria-invalid"] == "true"
 
 
-def test_the_status_must_be_open_or_closed(recruiter):
-    form = JobOpeningCreateForm(form_data(status="archived", designated_authority=recruiter.pk))
+def test_new_openings_start_open_and_a_posted_status_is_ignored(recruiter):
+    # Closing goes through close_opening(), which writes the "closed" event; the forms can't.
+    form = JobOpeningCreateForm(form_data(status="closed", designated_authority=recruiter.pk))
 
-    assert not form.is_valid()
-    assert "status" in form.errors
-    assert JobOpening.objects.count() == 0
+    assert "status" not in form.fields
+    assert "status" not in JobOpeningForm().fields
+    assert form.is_valid()
+    assert form.save().status == JobOpening.Status.OPEN

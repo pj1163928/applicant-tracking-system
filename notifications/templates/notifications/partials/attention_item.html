@@ -1,0 +1,23 @@
+{% comment %}One closure awaiting a decision. Expects `item` (notifications.attention.AttentionItem).{% endcomment %}
+{% with opening=item.opening count=item.opening.active_count %}
+<li class="animate-rise motion-reduce:animate-none rounded-box border border-base-300 bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="attention-item">
+  <div class="flex flex-wrap items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-2">
+        <a href="{{ opening.get_absolute_url }}" class="link link-hover font-semibold break-words">{{ opening.title }}</a>
+        {% include "openings/partials/status_badge.html" %}
+        <span class="badge badge-sm badge-warning badge-soft" data-testid="attention-active-count">{{ count }} still in progress</span>
+      </p>
+      <p class="mt-1 text-sm opacity-70">
+        {{ opening.department }}
+        {% if item.closed %}· Closed {{ item.closed.at|date:"M j, Y" }} by {{ item.closed.by.get_full_name|default:item.closed.by.username }}{% endif %}
+      </p>
+      {% if item.closed.note %}<p class="mt-1 text-sm break-words">"{{ item.closed.note }}"</p>{% endif %}
+      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+    </div>
+    <a href="{{ opening.get_absolute_url }}#closure" class="btn btn-sm btn-primary gap-2" data-testid="attention-decide">
+      Decide {% icon "arrow-right" "size-4" %}
+    </a>
+  </div>
+</li>
+{% endwith %}

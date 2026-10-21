@@ -77,14 +77,15 @@ def can_move_applications(user: AnyUser) -> bool:
     return has_role(user, *STAGE_MOVER_ROLES)
 
 
-# Roles that create and edit job openings. Admins always pass role checks.
+# Roles that create, edit and close job openings. Admins always pass role checks.
 OPENING_MANAGER_ROLES: tuple[str, ...] = (RECRUITER, HIRING_MANAGER)
 
 
 def can_manage_openings(user: AnyUser) -> bool:
-    """Return True if the user may create or edit job openings.
+    """Return True if the user may create, edit or close job openings.
 
-    That is an Admin, a Recruiter or a Hiring Manager.
+    That is an Admin, a Recruiter or a Hiring Manager. Deciding what happens
+    to a closed opening's remaining applications is ``can_decide_closure``.
     """
     return has_role(user, *OPENING_MANAGER_ROLES)
 
@@ -167,3 +168,20 @@ def can_retire_skills(user: AnyUser) -> bool:
     Being an opening's designated authority never grants it.
     """
     return has_role(user, *SKILL_RETIRER_ROLES)
+
+
+# Roles that decide what happens to every closed opening's remaining applications.
+# Admins always pass role checks. An opening's designated authority also decides for it.
+CLOSURE_DECIDER_ROLES: tuple[str, ...] = (HIRING_MANAGER,)
+
+
+def can_decide_closure(user: AnyUser, opening: "JobOpening") -> bool:
+    """Return True if the user may decide what happens to ``opening``'s remaining applications.
+
+    That covers cancelling them now (and, later, grace periods and restoring
+    applicants). It is an active Admin, an active Hiring Manager, or the
+    opening's designated authority while they are still eligible to be one.
+    Closing the opening is a separate, role-only right (``can_manage_openings``),
+    so a Recruiter who isn't the authority can close an opening but not decide.
+    """
+    return has_role(user, *CLOSURE_DECIDER_ROLES) or is_eligible_authority_of(user, opening)

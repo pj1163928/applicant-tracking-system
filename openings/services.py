@@ -1,17 +1,27 @@
-"""Skills on openings: attaching and detaching them, and creating new ones inline.
+"""Skills on openings, and closing openings.
 
 ``attach_skill()`` and ``detach_skill()`` are how staff change an opening's
 skills. Both check ``can_manage_opening_skills`` on the server, so a hand-made
 POST from someone without the right is refused even though the page hides the
 controls.
+
+``close_opening()`` and ``cancel_remaining_applications()`` are how an opening
+closes and how its remaining applicants are let go. Each writes an
+``OpeningEvent``, checks its own permission rule, and changes stages only
+through ``applications.services.move_application()``.
 """
 
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 
-from accounts.permissions import can_manage_opening_skills
-from openings.models import JobOpening, OpeningSkill, Skill
+from accounts.permissions import can_decide_closure, can_manage_opening_skills, can_manage_openings
+from applications.models import StageChange
+from applications.services import move_application
+from applications.stages import ACTIVE_STAGES, Stage
+from notifications.models import CandidateMessage
+from notifications.services import notify_authority_of_closure, send_candidate_message
+from openings.models import JobOpening, OpeningEvent, OpeningSkill, Skill
 
 ALREADY_LISTED = "already_listed"
 BLANK_SKILL = "blank_skill"
@@ -120,3 +130,136 @@ def detach_skill(opening: JobOpening, skill: Skill, *, by: User) -> bool:
         raise refusal
     deleted, _ = OpeningSkill.objects.filter(opening=opening, skill=skill).delete()
     return deleted > 0
+
+
+ALREADY_CLOSED = "already_closed"
+NOT_CLOSED = "not_closed"
+
+# The note on every application that "cancel now" moves to Rejected.
+CLOSURE_NOTE = "Position closed."
+
+
+def close_refusal(opening: JobOpening, by: User) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't close ``opening`` now, or None if they can.
+
+    Admins, Recruiters and Hiring Managers may close any open opening.
+    Judges ``opening.status`` as given, so ``close_opening()`` passes the stored row.
+    """
+    if not can_manage_openings(by):
+        return PermissionDenied("Only Admins, Recruiters and Hiring Managers can close openings.")
+    if not opening.is_open:
+        return ValidationError(f"{opening.title} is already closed.", code=ALREADY_CLOSED)
+    return None
+
+
+@transaction.atomic
+def close_opening(opening: JobOpening, *, by: User, note: str = "") -> OpeningEvent:
+    """Close ``opening``: it stops taking new applications, and a "closed" event is written.
+
+    Applications already in progress keep moving, including into Offer and
+    Hired. If any are at an active stage, the designated authority is emailed
+    (once the transaction commits) and the opening waits in their Needs
+    attention panel until someone decides what happens to those applicants.
+
+    Locks and re-reads the stored opening. Raises ``PermissionDenied`` unless
+    ``by`` may manage openings, and ``ValidationError`` if it is already
+    closed. Nothing is written when it refuses. Returns the new event.
+    """
+    stored = (
+        JobOpening.objects.select_for_update()
+        .select_related("designated_authority")
+        .get(pk=opening.pk)
+    )
+    refusal = close_refusal(stored, by)
+    if refusal is not None:
+        raise refusal
+    note = note.strip()
+    stored.status = JobOpening.Status.CLOSED
+    stored.save(update_fields=["status", "updated_at"])
+    event = OpeningEvent.objects.create(
+        opening=stored, kind=OpeningEvent.Kind.CLOSED, by=by, note=note
+    )
+    active_count = stored.applications.filter(stage__in=ACTIVE_STAGES).count()
+    if active_count:
+        notify_authority_of_closure(stored, active_count=active_count, by=by, note=note)
+    opening.status, opening.updated_at = stored.status, stored.updated_at
+    return event
+
+
+def cancel_refusal(opening: JobOpening, by: User) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't cancel ``opening``'s remaining applications, or None if they can.
+
+    Only someone allowed by ``can_decide_closure`` may, and only once the
+    opening is closed. Having nothing left to cancel is not a refusal: running
+    it again does nothing.
+    """
+    if not can_decide_closure(by, opening):
+        authority = opening.designated_authority
+        return PermissionDenied(
+            f"Only Admins, Hiring Managers or {authority.get_full_name() or authority.username}, "
+            "this opening's designated authority, can decide what happens to its applicants."
+        )
+    if opening.is_open:
+        return ValidationError(
+            f"{opening.title} is open. Close it before cancelling its applications.",
+            code=NOT_CLOSED,
+        )
+    return None
+
+
+def latest_closure(opening: JobOpening) -> OpeningEvent | None:
+    """Return ``opening``'s most recent "closed" event, or None if its closure wasn't recorded."""
+    return opening.events.filter(kind=OpeningEvent.Kind.CLOSED).first()
+
+
+@transaction.atomic
+def cancel_remaining_applications(opening: JobOpening, *, by: User) -> list[StageChange]:
+    """Cancel now: move every active application of closed ``opening`` to Rejected.
+
+    Each move goes through ``move_application()`` with cause closure and the
+    note "Position closed.", and each candidate is sent one cancellation email
+    through ``send_candidate_message()``, keyed on this closure so it is never
+    sent twice. Hired, Rejected and Withdrawn applications are left alone.
+    The first cancel of each closure writes one "Remaining applications
+    cancelled" event. Returns the new history rows.
+
+    Safe to repeat: once nothing is active it changes nothing and returns an
+    empty list, and a closure never gets a second cancel event. Everything
+    happens in one transaction, so if any write fails none is kept.
+
+    Locks and re-reads the stored opening, then checks ``cancel_refusal()``
+    before any application changes: raises ``PermissionDenied`` unless ``by``
+    may decide this opening's closure, and ``ValidationError`` if it is open.
+    """
+    stored = (
+        JobOpening.objects.select_for_update()
+        .select_related("designated_authority")
+        .get(pk=opening.pk)
+    )
+    refusal = cancel_refusal(stored, by)
+    if refusal is not None:
+        raise refusal
+    closure = latest_closure(stored)
+    occasion = f"closure-{closure.pk}" if closure is not None else "closure-unrecorded"
+    active = stored.applications.filter(stage__in=ACTIVE_STAGES).select_related("candidate")
+    rows = []
+    for application in active.order_by("pk"):
+        rows.append(
+            move_application(
+                application,
+                Stage.REJECTED,
+                by=by,
+                note=CLOSURE_NOTE,
+                cause=StageChange.Cause.CLOSURE,
+                expected_stage=application.stage,
+            )
+        )
+        send_candidate_message(application, CandidateMessage.Kind.CANCELLED, occasion=occasion)
+    cancelled_since = stored.events.filter(kind=OpeningEvent.Kind.APPLICATIONS_CANCELLED)
+    if closure is not None:
+        cancelled_since = cancelled_since.filter(pk__gt=closure.pk)
+    if rows and not cancelled_since.exists():
+        OpeningEvent.objects.create(
+            opening=stored, kind=OpeningEvent.Kind.APPLICATIONS_CANCELLED, by=by
+        )
+    return rows

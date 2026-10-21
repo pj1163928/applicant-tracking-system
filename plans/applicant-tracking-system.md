@@ -292,8 +292,8 @@ Recruiters and Admins archive and unarchive candidates.
 - [x] Archived candidates are hidden by default and shown with "Show archived".
 - [x] New applications for archived candidates are refused.
 - [x] Archived candidates' existing applications still show on boards.
-- [ ] Only Admins can permanently delete. The confirmation page lists the applications, stage history and messages that will be removed.
-  - *Built except messages:* Admin-only delete and the confirmation page's applications and stage history are done and tested. `CandidateMessage` arrives in Phase 10, so its messages go on the page then (`candidates.services.DeletionSummary`).
+- [x] Only Admins can permanently delete. The confirmation page lists the applications, stage history and messages that will be removed.
+  - *Messages were added in Phase 10,* once `CandidateMessage` existed (`candidates.services.DeletionSummary.messages`).
 
 ### TDD
 
@@ -319,14 +319,14 @@ Anyone who can edit an opening can close it.
 
 ### Acceptance criteria
 
-- [ ] Closing writes a "closed" OpeningEvent and blocks new applications.
-- [ ] Moves for existing applications still work after closing.
-- [ ] With active applications, the designated authority sees the opening in Needs attention and gets one staff email.
-- [ ] Recruiters can close an opening but don't see, and can't post, the closure decision actions.
-- [ ] Cancel now moves every active application to Rejected (cause = closure, note "Position closed."), using `move_application`, in one transaction.
-- [ ] Each cancelled candidate gets exactly one cancellation email, logged as a CandidateMessage, and running the action again doesn't resend it.
-- [ ] The opening page lists its OpeningEvents.
-- [ ] The permanent-delete confirmation page (Phase 9) also lists the candidate's messages that will be removed.
+- [x] Closing writes a "closed" OpeningEvent and blocks new applications.
+- [x] Moves for existing applications still work after closing.
+- [x] With active applications, the designated authority sees the opening in Needs attention and gets one staff email.
+- [x] Recruiters can close an opening but don't see, and can't post, the closure decision actions.
+- [x] Cancel now moves every active application to Rejected (cause = closure, note "Position closed."), using `move_application`, in one transaction.
+- [x] Each cancelled candidate gets exactly one cancellation email, logged as a CandidateMessage, and running the action again doesn't resend it.
+- [x] The opening page lists its OpeningEvents.
+- [x] The permanent-delete confirmation page (Phase 9) also lists the candidate's messages that will be removed.
 
 ### TDD
 

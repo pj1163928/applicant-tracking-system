@@ -19,7 +19,7 @@ from applications.stages import Stage
 from candidates.models import Candidate, Source
 from candidates.services import archive_candidate
 from openings.models import JobOpening, OpeningSkill, Skill
-from openings.services import find_or_create_skill
+from openings.services import cancel_remaining_applications, close_opening, find_or_create_skill
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -98,11 +98,11 @@ class SeedOpening:
     authority: str  # a seeded username; applied only when seed creates the opening
     description: str
     location: str = ""
-    status: str = JobOpening.Status.OPEN  # applied only when seed creates the opening
 
 
-# Phase 4. Open and closed openings, split across three designated authorities, so
-# the manager's "My openings" differs from "All". One has no location.
+# Phase 4. Openings split across three designated authorities, so the manager's
+# "My openings" differs from "All". One has no location. Every opening starts open;
+# Phase 10 closes three of them through close_opening() (SEED_CLOSURES).
 SEED_OPENINGS: tuple[SeedOpening, ...] = (
     SeedOpening(
         "Backend Developer",
@@ -124,7 +124,6 @@ SEED_OPENINGS: tuple[SeedOpening, ...] = (
         "manager",
         "Run interviews and usability studies with our users.",
         "Remote",
-        JobOpening.Status.CLOSED,
     ),
     SeedOpening(
         "Data Engineer",
@@ -138,7 +137,6 @@ SEED_OPENINGS: tuple[SeedOpening, ...] = (
         "Operations",
         "recruiter",
         "Help customers by phone and email, and log what they need.",
-        status=JobOpening.Status.CLOSED,
     ),
     SeedOpening(
         "Product Designer",
@@ -209,6 +207,9 @@ SEED_APPLICATIONS: tuple[SeedApplication, ...] = (
     SeedApplication("jade.okafor@example.com", "Backend Developer", "Career fair"),
     # Phase 9: Kai's application stays on the board after Kai is archived.
     SeedApplication("kai.moreno@example.com", "Backend Developer", "Indeed"),
+    # Phase 10: UX Researcher's applicants, cancelled when it closes (SEED_CLOSURES).
+    SeedApplication("dev.sharma@example.com", "UX Researcher", "LinkedIn Jobs"),
+    SeedApplication("jade.okafor@example.com", "UX Researcher", "Company careers page"),
 )
 
 
@@ -274,6 +275,12 @@ SEED_MOVES: tuple[SeedMove, ...] = (
         ((Stage.WITHDRAWN, "Moving abroad for family reasons."),),
     ),
     SeedMove(
+        "jade.okafor@example.com",
+        "UX Researcher",
+        "recruiter",
+        ((Stage.SCREENING, ""),),
+    ),
+    SeedMove(
         "elena.rossi@example.com",
         "Product Designer",
         "admin",
@@ -294,10 +301,32 @@ SEED_MOVES: tuple[SeedMove, ...] = (
 SEED_ARCHIVED: tuple[str, ...] = ("kai.moreno@example.com",)
 
 
+@dataclass(frozen=True)
+class SeedClosure:
+    opening: str  # a seeded opening's title
+    by: str  # a seeded username, who closes it
+    note: str
+    cancel_by: str | None = None  # a seeded username who then cancels its remaining applications
+
+
+# Phase 10. Closed through close_opening() once every seeded move is made, so each gets
+# its "closed" event. Only an opening seed has just created is closed, so a re-run never
+# closes one again. UX Researcher's applicants are cancelled (two logged emails);
+# QA Analyst still has Ann at Applied, so it waits in the manager's Needs attention.
+SEED_CLOSURES: tuple[SeedClosure, ...] = (
+    SeedClosure(
+        "UX Researcher", "manager", "Research budget moved to next year.", cancel_by="manager"
+    ),
+    SeedClosure("Support Specialist", "recruiter", "Filled by an internal transfer."),
+    SeedClosure("QA Analyst", "recruiter", "Paused until the new test lead starts."),
+)
+
+
 class Command(BaseCommand):
     help = (
         "Create one demo user per role, plus sample candidates (one archived), sources, "
-        "openings with skills, and applications, some moved along the pipeline."
+        "openings with skills (three of them closed), and applications, some moved along "
+        "the pipeline."
     )
 
     @transaction.atomic
@@ -313,7 +342,8 @@ class Command(BaseCommand):
         )
         created = sum(seed_source(spec)[1] for spec in SEED_SOURCES)
         self.stdout.write(f"Sources: {created} created, {len(SEED_SOURCES) - created} checked")
-        created = sum(seed_opening(spec)[1] for spec in SEED_OPENINGS)
+        new_openings = {spec.title for spec in SEED_OPENINGS if seed_opening(spec)[1]}
+        created = len(new_openings)
         self.stdout.write(f"Openings: {created} created, {len(SEED_OPENINGS) - created} checked")
         created = sum(seed_skill(spec)[1] for spec in SEED_SKILLS)
         self.stdout.write(f"Skills: {created} created, {len(SEED_SKILLS) - created} checked")
@@ -339,6 +369,13 @@ class Command(BaseCommand):
         ]
         self.stdout.write(
             f"Archived candidates: {results.count(CREATED)} archived, "
+            f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
+        )
+        results = [
+            seed_closure(spec, just_created=spec.opening in new_openings) for spec in SEED_CLOSURES
+        ]
+        self.stdout.write(
+            f"Closed openings: {results.count(CREATED)} closed, "
             f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
         )
         self.stdout.write(
@@ -413,19 +450,17 @@ def seed_source(spec: SeedSource) -> tuple[Source, bool]:
 def seed_opening(spec: SeedOpening) -> tuple[JobOpening, bool]:
     """Create or update one seeded opening, found by (title, department); return (opening, created).
 
-    Status and designated authority are set only when seed creates the
-    opening, because staff close openings and (later) reassign them on
-    purpose. Drifted details (location, description) are repaired.
+    The designated authority is set only when seed creates the opening, and
+    the status is never touched, because staff close openings and (later)
+    reassign them on purpose. New openings start open; ``seed_closure()``
+    closes the seeded closed ones. Drifted details (location, description)
+    are repaired.
     """
     wanted = {"location": spec.location, "description": spec.description}
     opening, created = JobOpening.objects.get_or_create(
         title=spec.title,
         department=spec.department,
-        defaults=wanted
-        | {
-            "status": spec.status,
-            "designated_authority": User.objects.get(username=spec.authority),
-        },
+        defaults=wanted | {"designated_authority": User.objects.get(username=spec.authority)},
     )
     if created:
         return opening, True
@@ -535,5 +570,29 @@ def seed_archived(email: str, by: User, *, just_created: bool) -> str:
     try:
         archive_candidate(Candidate.objects.get(email=email), by=by)
     except ValidationError:
+        return SKIPPED
+    return CREATED
+
+
+def seed_closure(spec: SeedClosure, *, just_created: bool) -> str:
+    """Close one seeded opening that this run created; return CREATED, CHECKED or SKIPPED.
+
+    An opening from an earlier run is left as it is (CHECKED), open or closed,
+    because staff may have closed it, or (later) reopened it, on purpose. The
+    close goes through ``close_opening()``, and any cancel through
+    ``cancel_remaining_applications()``, so both write their events and the
+    cancel emails each candidate once.
+    """
+    if not just_created:
+        return CHECKED
+    department = next(o.department for o in SEED_OPENINGS if o.title == spec.opening)
+    opening = JobOpening.objects.get(title=spec.opening, department=department)
+    try:
+        with transaction.atomic():  # the close and its cancel happen together, or neither does
+            close_opening(opening, by=User.objects.get(username=spec.by), note=spec.note)
+            if spec.cancel_by:
+                cancel_by = User.objects.get(username=spec.cancel_by)
+                cancel_remaining_applications(opening, by=cancel_by)
+    except (ValidationError, PermissionDenied):
         return SKIPPED
     return CREATED

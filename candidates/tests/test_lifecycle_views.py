@@ -12,6 +12,8 @@ from django.utils import timezone
 from applications.models import Application, StageChange
 from applications.stages import Stage
 from candidates.models import Candidate
+from notifications.models import CandidateMessage
+from notifications.services import send_candidate_message
 
 pytestmark = pytest.mark.django_db
 
@@ -279,19 +281,46 @@ def test_a_candidate_with_no_applications_says_so(client, admin, kai):
     assert 'data-testid="delete-no-applications"' in html
 
 
+def test_the_confirmation_page_lists_the_messages_that_will_be_removed(
+    client, admin, kai, backend, application_at
+):
+    application = application_at(kai, backend, Stage.INTERVIEW)
+    send_candidate_message(application, CandidateMessage.Kind.CANCELLED, occasion="closure-1")
+    client.force_login(admin)
+
+    html = page(client.get(reverse("candidates:delete", args=[kai.pk])))
+
+    assert 'data-testid="delete-message-count">1<' in html
+    assert html.count('data-testid="delete-message"') == 1
+    assert "Your application for Backend Developer" in html
+    assert "Application cancelled: position closed · Backend Developer" in html
+    assert CandidateMessage.objects.count() == 1  # looking deletes nothing
+
+
+def test_a_candidate_with_no_messages_shows_a_zero_count_and_no_list(client, admin, kai):
+    client.force_login(admin)
+
+    html = page(client.get(reverse("candidates:delete", args=[kai.pk])))
+
+    assert 'data-testid="delete-message-count">0<' in html
+    assert 'data-testid="delete-messages"' not in html
+
+
 def test_confirming_deletes_and_returns_to_the_list_with_what_was_removed(
     client, admin, kai, backend, application_at
 ):
-    application_at(kai, backend, Stage.REJECTED)
+    application = application_at(kai, backend, Stage.REJECTED)
+    send_candidate_message(application, CandidateMessage.Kind.CANCELLED, occasion="closure-1")
     client.force_login(admin)
 
     response = client.post(reverse("candidates:delete", args=[kai.pk]))
 
     assert response.url == LIST_URL
     assert message_texts(response) == [
-        "Permanently deleted Kai Moreno, with 1 application and 2 stage changes."
+        "Permanently deleted Kai Moreno, with 1 application, 2 stage changes and 1 message."
     ]
     assert (Application.objects.count(), StageChange.objects.count()) == (0, 0)
+    assert CandidateMessage.objects.count() == 0
 
 
 @pytest.mark.parametrize("user_fixture", ALL_ROLES)

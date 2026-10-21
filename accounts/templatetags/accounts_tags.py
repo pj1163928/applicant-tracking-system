@@ -71,3 +71,9 @@ def can_manage_opening_skills(user: roles.AnyUser, opening) -> bool:
 def can_retire_skills(user: roles.AnyUser) -> bool:
     """Show skill retire and reactivate actions: ``{% if user|can_retire_skills %}``."""
     return permissions.can_retire_skills(user)
+
+
+@register.filter
+def can_decide_closure(user: roles.AnyUser, opening) -> bool:
+    """Show closure decision actions: ``{% if user|can_decide_closure:opening %}``."""
+    return permissions.can_decide_closure(user, opening)

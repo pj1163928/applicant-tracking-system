@@ -38,8 +38,11 @@ Plain pytest fixtures, no factory libraries. The root `conftest.py` provides:
 | `make_opening(title, authority, **fields)` | factory for a job opening (default department and description) |
 
 App-only fixtures worth knowing: `applications/tests/conftest.py` (candidates, sources,
-openings, and `apply` to record through the service) and `candidates/tests/conftest.py`
-(`kai`, and `application_at(candidate, opening, stage)` for an application at any stage).
+openings, and `apply` to record through the service), `candidates/tests/conftest.py`
+(`kai`, and `application_at(candidate, opening, stage)` for an application at any stage),
+`openings/tests/conftest.py` (`make_candidate`, `application_at`, and `close_directly(opening,
+by)`, which closes with direct writes so cancel tests don't depend on `close_opening`) and
+`notifications/tests/conftest.py` (`application`).
 
 An autouse `fast_password_hashing` fixture switches every test to Django's MD5
 hasher. The default hasher is deliberately slow and made the suite about 90×
@@ -67,8 +70,12 @@ To run one test across roles, parametrize on the fixture name and use
 - **HTMX**: send the header with `client.post(url, data, HTTP_HX_REQUEST="true")`
   and assert that the response is the partial, not the full page (for example,
   no `<html`).
-- **Email**: tests use Django's locmem backend automatically. Assert on
-  `django.core.mail.outbox`, including that nothing is sent twice.
+- **Email**: tests use Django's locmem backend automatically. Assert on pytest-django's
+  `mailoutbox` (or `django.core.mail.outbox`), including that nothing is sent twice. Emails
+  are sent after the transaction commits, and a test's transaction never commits, so wrap
+  the call in `with django_capture_on_commit_callbacks(execute=True):`. Without it the
+  outbox stays empty. Email bodies are wrapped to short lines, so compare text with
+  `" ".join(body.split())`.
 - **Dates**: never call `date.today()` inside a rule. Pass "today" in as an
   argument so tests can choose it.
 - **`seed`**: call `call_command("seed")` twice and check that the second run

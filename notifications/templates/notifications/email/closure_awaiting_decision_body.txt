@@ -1,0 +1,12 @@
+{% autoescape off %}Hello {{ authority.first_name|default:authority.username }},
+
+{{ closed_by }} closed {{ opening.title }} ({{ opening.department }}).{% if note %}
+Their note: "{{ note }}"{% endif %}
+
+{{ active_count }} applicant{{ active_count|pluralize }} {{ active_count|pluralize:"is,are" }} still in progress. As the opening's
+designated authority, you decide what happens to them. Open
+Needs attention in the ATS to see the opening and decide.
+
+Applicants already in progress can still move, including into
+Offer and Hired.
+{% endautoescape %}

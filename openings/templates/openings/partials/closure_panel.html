@@ -1,0 +1,46 @@
+{% load accounts_tags %}
+{% comment %}
+A closed opening's remaining applicants and what may be done about them.
+Shown only while the opening is closed and has active applications. Expects
+`opening` and `active_applications`. Decision actions show only to users
+allowed by can_decide_closure; the server refuses everyone else too.
+{% endcomment %}
+{% with count=active_applications|length authority=opening.designated_authority %}
+<section id="closure" class="card mt-6 overflow-hidden border border-warning/50 bg-base-100 shadow-sm" aria-labelledby="closure-heading" data-testid="closure-panel">
+  <div class="h-1.5 bg-warning" aria-hidden="true"></div>
+  <div class="card-body gap-4">
+    <div class="flex items-start gap-3">
+      <span class="grid size-10 shrink-0 place-items-center rounded-full bg-warning/15 text-warning" aria-hidden="true">{% icon "bell" "size-5" %}</span>
+      <div class="min-w-0">
+        <h2 id="closure-heading" class="text-lg font-bold">{{ count }} applicant{{ count|pluralize }} still in progress</h2>
+        <p class="text-sm opacity-80">This opening is closed, but {{ count|pluralize:"this applicant,these applicants" }} can keep moving, including into Offer and Hired. Someone with closure authority decides what happens to them.</p>
+      </div>
+    </div>
+
+    <ul class="flex flex-wrap gap-2" data-testid="closure-applicants">
+      {% for application in active_applications %}
+      <li class="inline-flex items-center gap-2 rounded-box bg-base-200/70 py-1 pr-2 pl-1">
+        {% include "partials/avatar.html" with user=application.candidate size="w-6" text="text-[0.6rem]" %}
+        <span class="text-sm font-medium">{{ application.candidate.full_name }}</span>
+        {% include "applications/partials/stage_badge.html" %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if user|can_decide_closure:opening %}
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
+      <p class="text-sm">
+        {% if authority == user %}You're the designated authority, so this decision is yours.{% else %}You can decide for {{ authority.get_full_name|default:authority.username }}, the designated authority.{% endif %}
+      </p>
+      <a href="{% url 'openings:cancel_remaining' opening.pk %}" class="btn btn-error btn-outline gap-2" data-testid="cancel-remaining">
+        {% icon "user-x" "size-4" %} Cancel remaining applications
+      </a>
+    </div>
+    {% else %}
+    <p class="flex items-center gap-2 border-t border-base-300 pt-4 text-sm opacity-80" data-testid="closure-waiting">
+      {% icon "lock" "size-4 shrink-0" %} Waiting for {{ authority.get_full_name|default:authority.username }}, the designated authority, or an Admin or Hiring Manager to decide.
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endwith %}

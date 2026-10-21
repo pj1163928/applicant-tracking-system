@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Needs attention{% endblock %}
+
+{% block content %}
+<header class="flex flex-wrap items-center gap-3">
+  <span class="grid size-11 place-items-center rounded-box bg-warning/15 text-warning" aria-hidden="true">{% icon "bell" "size-6" %}</span>
+  <div>
+    <h1 class="text-2xl font-bold sm:text-3xl">Needs attention</h1>
+    <p class="text-sm opacity-70">Closed openings whose applicants are still in progress, waiting for a decision.</p>
+  </div>
+</header>
+
+{% if not yours and not others %}
+<div class="mt-6 rounded-box border border-dashed border-base-300 bg-base-100 p-8 text-center" data-testid="attention-empty">
+  {% icon "inbox" "mx-auto size-8 opacity-50" %}
+  <p class="mt-2 font-semibold">Nothing needs your decision.</p>
+  <p class="text-sm opacity-70">When an opening you can decide for closes with applicants still in progress, it shows up here.</p>
+</div>
+{% else %}
+
+<section class="mt-6" aria-labelledby="yours-heading">
+  <h2 id="yours-heading" class="flex items-center gap-2 text-lg font-bold">
+    Assigned to you <span class="badge badge-sm {% if yours %}badge-warning{% else %}badge-ghost{% endif %}">{{ yours|length }}</span>
+  </h2>
+  {% if yours %}
+  <ul class="mt-2 grid gap-2" data-testid="attention-yours">
+    {% for item in yours %}{% include "notifications/partials/attention_item.html" %}{% endfor %}
+  </ul>
+  {% else %}
+  <p class="mt-2 text-sm opacity-70" data-testid="attention-yours-empty">None of your openings are waiting on you.</p>
+  {% endif %}
+</section>
+
+{% if others %}
+<section class="mt-6" aria-labelledby="others-heading">
+  <h2 id="others-heading" class="flex items-center gap-2 text-lg font-bold">
+    Other openings you can decide for <span class="badge badge-sm badge-ghost">{{ others|length }}</span>
+  </h2>
+  <p class="text-sm opacity-70">Their designated authority decides first, but as an {% if user.is_superuser %}Admin{% else %}Hiring Manager{% endif %} you can too.</p>
+  <ul class="mt-2 grid gap-2" data-testid="attention-others">
+    {% for item in others %}{% include "notifications/partials/attention_item.html" %}{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

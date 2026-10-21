@@ -24,7 +24,7 @@
         {% if not candidate.is_archived %}If you might need {{ candidate.first_name }} again, archive them instead.{% endif %}</p>
     </div>
 
-    <dl class="grid grid-cols-2 gap-3" data-testid="delete-counts">
+    <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="delete-counts">
       <div class="rounded-box bg-base-200 p-3">
         <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">Applications</dt>
         <dd class="text-2xl font-bold" data-testid="delete-application-count">{{ summary.applications|length }}</dd>
@@ -32,6 +32,10 @@
       <div class="rounded-box bg-base-200 p-3">
         <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">Stage changes</dt>
         <dd class="text-2xl font-bold" data-testid="delete-stage-change-count">{{ summary.stage_change_count }}</dd>
+      </div>
+      <div class="rounded-box bg-base-200 p-3">
+        <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">Messages</dt>
+        <dd class="text-2xl font-bold" data-testid="delete-message-count">{{ summary.messages|length }}</dd>
       </div>
     </dl>
 
@@ -54,6 +58,24 @@
     </ul>
     {% else %}
     <p class="opacity-70" data-testid="delete-no-applications">{{ candidate.first_name }} has no applications, so only their contact details and notes are deleted.</p>
+    {% endif %}
+
+    {% if summary.messages %}
+    <div>
+      <h2 class="flex items-center gap-2 font-semibold">{% icon "mail" "size-4" %} Emails sent to {{ candidate.first_name }}</h2>
+      <ul class="mt-2 grid gap-2" data-testid="delete-messages">
+        {% for message in summary.messages %}
+        <li class="rounded-box border border-base-300 p-3" data-testid="delete-message">
+          <p class="font-medium break-words">{{ message.subject }}</p>
+          <p class="text-xs opacity-60">{{ message.get_kind_display }} · {{ message.application.opening.title }} · <time datetime="{{ message.sent_at|date:'c' }}">{{ message.sent_at|date:"M j, Y, g:i a" }}</time></p>
+          <details class="mt-1">
+            <summary class="cursor-pointer text-sm">Email text</summary>
+            <p class="mt-2 text-sm whitespace-pre-line break-words opacity-80">{{ message.body }}</p>
+          </details>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
 
     <form method="post" class="flex flex-wrap justify-end gap-2">

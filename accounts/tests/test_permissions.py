@@ -3,6 +3,7 @@ from django.contrib.auth.models import AnonymousUser, Group
 
 from accounts.permissions import (
     can_be_designated_authority,
+    can_decide_closure,
     can_delete_candidates,
     can_make_offer,
     can_manage_applications,
@@ -312,3 +313,49 @@ def test_who_may_manage_an_openings_skills_and_who_may_retire_skills(
     assert can_manage_opening_skills(user, rileys_opening) is manages_own
     assert can_manage_opening_skills(user, someone_elses) is manages_elsewhere
     assert can_retire_skills(user) is retires_skills
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "closes", "decides_own", "decides_elsewhere"),
+    [
+        ("admin", True, True, True),
+        ("hiring_manager", True, True, True),
+        # Riley is rileys_opening's authority: they decide for it, and no other opening.
+        ("riley", True, True, False),
+        # A Recruiter who isn't the authority can close an opening but never decide.
+        ("recruiter", True, False, False),
+        ("riley_demoted", False, False, False),  # named as authority, but no longer eligible
+        ("interviewer", False, False, False),
+        ("no_role_user", False, False, False),
+        ("inactive_manager", False, False, False),
+        ("inactive_admin", False, False, False),
+    ],
+)
+def test_who_may_close_an_opening_and_who_may_decide_its_remaining_applications(
+    request,
+    user_fixture,
+    closes,
+    decides_own,
+    decides_elsewhere,
+    rileys_opening,
+    make_opening,
+    make_user,
+):
+    someone_elses = make_opening("Backend Developer", make_user("other-manager", HIRING_MANAGER))
+    user = request.getfixturevalue(user_fixture)
+
+    assert can_manage_openings(user) is closes
+    assert can_decide_closure(user, rileys_opening) is decides_own
+    assert can_decide_closure(user, someone_elses) is decides_elsewhere
+
+
+def test_elevated_flags_or_move_rights_never_stand_in_for_closure_authority(
+    recruiter, make_user, rileys_opening
+):
+    recruiter.is_staff = True
+    recruiter.save()
+    staff_without_role = make_user("staff-only", is_staff=True)
+
+    assert can_decide_closure(recruiter, rileys_opening) is False
+    assert can_decide_closure(staff_without_role, rileys_opening) is False
+    assert can_decide_closure(AnonymousUser(), rileys_opening) is False

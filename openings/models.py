@@ -1,12 +1,14 @@
-"""Job openings (the roles staff hire for, each with a designated authority) and their skills."""
+"""Job openings (the roles staff hire for, each with a designated authority), their skills,
+and their event history."""
 
 from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.db import models
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.db.models.functions import Lower
 from django.urls import reverse
 
+from applications.stages import ACTIVE_STAGES
 from openings.scopes import MINE, Scope
 
 DUPLICATE_SKILL_NAME = "duplicate_skill_name"
@@ -100,6 +102,23 @@ class JobOpeningQuerySet(models.QuerySet):
         """Return the openings that take new applications: the open ones."""
         return self.filter(status=OpeningStatus.OPEN)
 
+    def with_active_count(self) -> "JobOpeningQuerySet":
+        """Annotate each opening with ``active_count``: its applications at an active stage."""
+        return self.annotate(
+            active_count=Count("applications", filter=Q(applications__stage__in=ACTIVE_STAGES))
+        )
+
+    def awaiting_closure_decision(self) -> "JobOpeningQuerySet":
+        """Return the closed openings that still have active applications, with ``active_count``.
+
+        Someone allowed by ``accounts.permissions.can_decide_closure`` must
+        decide what happens to those applicants; until then the opening shows
+        in the Needs attention panel.
+        """
+        return (
+            self.filter(status=OpeningStatus.CLOSED).with_active_count().filter(active_count__gt=0)
+        )
+
     def open_first(self) -> "JobOpeningQuerySet":
         """Order open openings before closed ones, then by title."""
         return self.annotate(
@@ -170,3 +189,39 @@ class OpeningSkill(models.Model):
 
     def __str__(self) -> str:
         return f"{self.skill} on {self.opening}"
+
+
+class OpeningEventKind(models.TextChoices):
+    """What happened to an opening. Also reachable as ``OpeningEvent.Kind``."""
+
+    CLOSED = "closed", "Closed"
+    APPLICATIONS_CANCELLED = "applications_cancelled", "Remaining applications cancelled"
+
+
+class OpeningEvent(models.Model):
+    """One row of an opening's permanent event history: what happened, who did it, when, and why.
+
+    Written only by the closure services in ``openings.services``, never edited.
+    """
+
+    Kind = OpeningEventKind
+
+    opening = models.ForeignKey(JobOpening, on_delete=models.CASCADE, related_name="events")
+    kind = models.CharField(max_length=30, choices=Kind.choices)
+    by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="opening_events"
+    )
+    at = models.DateTimeField(auto_now_add=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-at", "-pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(kind__in=OpeningEventKind.values),
+                name="opening_event_kind_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()}: {self.opening}"

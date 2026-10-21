@@ -13,13 +13,20 @@ from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import (
     OPENING_MANAGER_ROLES,
     SKILL_RETIRER_ROLES,
+    can_decide_closure,
     can_manage_opening_skills,
 )
+from applications.stages import ACTIVE_STAGES
 from config.htmx import is_htmx_partial
-from openings.forms import JobOpeningCreateForm, JobOpeningForm, SkillAttachForm
+from openings.forms import CloseOpeningForm, JobOpeningCreateForm, JobOpeningForm, SkillAttachForm
 from openings.models import JobOpening, Skill
 from openings.scopes import ALL, MINE, resolve_scope
-from openings.services import attach_skill, detach_skill
+from openings.services import (
+    attach_skill,
+    cancel_remaining_applications,
+    close_opening,
+    detach_skill,
+)
 
 
 class OpeningListView(ListView):
@@ -70,7 +77,131 @@ class OpeningDetailView(DetailView):
             super().get_context_data(**kwargs)
             | {"applications": applications}
             | skills_section_context(self.object)
+            | closure_context(self.object)
         )
+
+
+def closure_context(opening: JobOpening) -> dict:
+    """What an opening's closure panel and event history show."""
+    active = opening.applications.filter(stage__in=ACTIVE_STAGES).select_related("candidate")
+    return {
+        "active_applications": list(
+            active.order_by("candidate__last_name", "candidate__first_name")
+        ),
+        "events": list(opening.events.select_related("by")),
+    }
+
+
+def plural(count: int, word: str) -> str:
+    """``count`` and ``word``, with an "s" unless there is exactly one."""
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+class OpeningCloseView(RoleRequiredMixin, DetailView):
+    """Close an opening, from a confirmation page with an optional note.
+
+    Admins, Recruiters and Hiring Managers only; others get 403 for GET and
+    POST. Goes through ``close_opening()``. An opening that is already closed
+    sends the user back to it with a message.
+    """
+
+    allowed_roles = OPENING_MANAGER_ROLES
+    queryset = JobOpening.objects.select_related("designated_authority")
+    context_object_name = "opening"
+    template_name = "openings/jobopening_close.html"
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if not self.object.is_open:
+            messages.info(request, f"{self.object.title} is already closed.")
+            return redirect(self.object)
+        return self.render_to_response(self.get_context_data(form=CloseOpeningForm()))
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | closure_context(self.object)
+
+    def post(self, request, *args, **kwargs):
+        self.object = opening = self.get_object()
+        form = CloseOpeningForm(request.POST)
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(form=form))
+        try:
+            close_opening(opening, by=request.user, note=form.cleaned_data["note"])
+        except ValidationError as error:
+            messages.info(request, error.messages[0])
+            return redirect(opening)
+        active = len(closure_context(opening)["active_applications"])
+        status = f"Closed {opening.title}. It no longer takes new applications."
+        if active:
+            authority = opening.designated_authority
+            if authority == request.user:
+                who = "you decide"
+            else:
+                who = (
+                    f"{authority.get_full_name() or authority.username} has been emailed to decide"
+                )
+            status += (
+                f" {plural(active, 'applicant')} still in progress can keep moving, and "
+                f"{who} what happens to them."
+            )
+        messages.success(request, status)
+        return redirect(opening)
+
+
+class OpeningCancelRemainingView(UserPassesTestMixin, DetailView):
+    """Cancel now: move a closed opening's active applications to Rejected, after confirming.
+
+    Only users allowed by ``can_decide_closure`` on this opening; everyone else,
+    Recruiters who aren't its authority included, gets 403 for GET and POST.
+    Goes through ``cancel_remaining_applications()``, so repeating it (a double
+    submission, say) changes nothing.
+    """
+
+    raise_exception = True
+    context_object_name = "opening"
+    template_name = "openings/jobopening_cancel_remaining.html"
+
+    def test_func(self) -> bool:
+        self.object = get_object_or_404(
+            JobOpening.objects.select_related("designated_authority"), pk=self.kwargs["pk"]
+        )
+        return can_decide_closure(self.request.user, self.object)
+
+    def get_object(self, queryset=None) -> JobOpening:
+        return self.object
+
+    def get(self, request, *args, **kwargs):
+        context = self.get_context_data()
+        if self.object.is_open:
+            messages.info(request, f"{self.object.title} is open, so it has nothing to cancel.")
+            return redirect(self.object)
+        if not context["active_applications"]:
+            messages.info(request, f"No applicants for {self.object.title} are still in progress.")
+            return redirect(self.object)
+        return self.render_to_response(context)
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | closure_context(self.object)
+
+    def post(self, request, *args, **kwargs):
+        opening = self.object
+        try:
+            rows = cancel_remaining_applications(opening, by=request.user)
+        except ValidationError as error:
+            messages.error(request, error.messages[0])
+            return redirect(opening)
+        if rows:
+            who = "The candidate has" if len(rows) == 1 else "Each candidate has"
+            messages.success(
+                request,
+                f"Cancelled {plural(len(rows), 'application')} for {opening.title}. "
+                f"{who} been emailed that the position closed.",
+            )
+        else:
+            messages.info(
+                request, f"Nothing to cancel: no applicants for {opening.title} are in progress."
+            )
+        return redirect(opening)
 
 
 class OpeningCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):

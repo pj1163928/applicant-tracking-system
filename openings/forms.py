@@ -16,17 +16,20 @@ class AuthorityChoiceField(forms.ModelChoiceField):
 
 
 class JobOpeningForm(DaisyUIFormMixin, forms.ModelForm):
-    """Edit an opening's details. The designated authority is not changed here."""
+    """Edit an opening's details. The designated authority is not changed here.
+
+    Nor is the status: closing goes through ``openings.services.close_opening()``,
+    which writes the opening's "closed" event. New openings start open.
+    """
 
     CLASSES = {
-        "status": ("select w-full", "select-error"),
         "designated_authority": ("select w-full", "select-error"),
         "description": ("textarea w-full", "textarea-error"),
     }
 
     class Meta:
         model = JobOpening
-        fields = ["title", "department", "location", "status", "description"]
+        fields = ["title", "department", "location", "description"]
         widgets = {
             "title": forms.TextInput(attrs={"autocomplete": "off"}),
             "department": forms.TextInput(attrs={"autocomplete": "off"}),
@@ -63,7 +66,6 @@ class JobOpeningCreateForm(JobOpeningForm):
             "title",
             "department",
             "location",
-            "status",
             "designated_authority",
             "description",
         ]
@@ -88,4 +90,20 @@ class SkillAttachForm(DaisyUIFormMixin, forms.Form):
             }
         ),
         help_text="Pick a suggestion, or type a new skill to create it.",
+    )
+
+
+class CloseOpeningForm(DaisyUIFormMixin, forms.Form):
+    """Confirm closing an opening, with an optional note for its event history."""
+
+    CLASSES = {"note": ("textarea w-full", "textarea-error")}
+
+    note = forms.CharField(
+        label="Note",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={"rows": 3, "placeholder": "For example: Budget moved to next year."}
+        ),
+        help_text="Shown in the opening's history, and in the email to the designated authority.",
     )

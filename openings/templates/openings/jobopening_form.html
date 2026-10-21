@@ -31,7 +31,7 @@
         <p class="label mt-1 whitespace-normal">{{ field.help_text }}</p>
         {% endif %}
       </div>
-      {% if opening and field.name == 'status' %}
+      {% if opening and field.name == 'location' %}
       <div data-testid="authority-readonly">
         <p class="fieldset-legend pt-0">Designated authority</p>
         <div class="flex min-h-10 items-center">{% include "openings/partials/authority.html" %}</div>

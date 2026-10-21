@@ -135,8 +135,8 @@ class CandidateArchiveView(RoleRequiredMixin, SingleObjectMixin, View):
 class CandidateDeleteView(RoleRequiredMixin, DetailView):
     """Permanently delete a candidate. Admins only; everyone else gets 403, for GET and POST.
 
-    GET shows a confirmation page listing every application and stage change
-    that will be destroyed. POST deletes through ``delete_candidate()``.
+    GET shows a confirmation page listing every application, stage change and
+    candidate message that will be destroyed. POST deletes through ``delete_candidate()``.
     """
 
     allowed_roles = CANDIDATE_DELETER_ROLES
@@ -152,11 +152,12 @@ class CandidateDeleteView(RoleRequiredMixin, DetailView):
         name = candidate.full_name
         delete_candidate(candidate, by=request.user)
         applications, changes = len(summary.applications), summary.stage_change_count
+        sent = len(summary.messages)
         messages.success(
             request,
             f"Permanently deleted {name}, with {applications} application"
-            f"{'' if applications == 1 else 's'} and {changes} stage change"
-            f"{'' if changes == 1 else 's'}.",
+            f"{'' if applications == 1 else 's'}, {changes} stage change"
+            f"{'' if changes == 1 else 's'} and {sent} message{'' if sent == 1 else 's'}.",
         )
         return redirect("candidates:list")
 

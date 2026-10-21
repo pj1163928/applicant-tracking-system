@@ -28,6 +28,106 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-20 — Applicant Tracking System: Phase 10/14, Closing an opening and "cancel now"
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 10`.
+2. Ok one change make cancel_remaining_applications something that can be applid mutliple times. If the cancellation is repeated, it should not create duplicate events. If thee first request fails, keep the unique message constraning as well as the transaction protections.
+3. Looks good continue
+4. Looks good, make sure that service checks permissions and confirms the opening is closed before changing applications.
+5. Looks good continue to development
+
+### Summary
+
+- **Outcome:** Closing openings, "cancel now", candidate messaging and the Needs attention panel.
+  - **Closing.** Admins, Recruiters and Hiring Managers get a Close opening button on an open opening. It leads to a confirmation page that has an optional note and says who will be asked to decide.
+    - Closing writes a "closed" event and stops new applications.
+    - Applicants already in progress keep moving on the board, including into Offer and Hired.
+    - If anyone is still active, the designated authority gets one email, sent once the transaction commits.
+  - **Closure panel.** While a closed opening has active applicants, its page shows who they are.
+    - Admins, Hiring Managers and the opening's authority (a Recruiter authority included) see **Cancel remaining applications**.
+    - Everyone else sees "Waiting for … to decide." A Recruiter who isn't the authority gets a 403 if they open or post the cancel page.
+  - **Cancel now.** A confirmation page lists each active applicant moving to Rejected. Confirming moves them all through `move_application` (cause closure, note "Position closed."), emails each candidate once, and writes one "Remaining applications cancelled" event, all in one transaction.
+    - **Repeatable (prompt 2):** a second run, or a double submission, changes nothing and says "Nothing to cancel".
+    - A later cancel in the same closure adds no second event, and anyone who already got that closure's email doesn't get it again.
+    - If any write fails, nothing is kept, and a retry works.
+  - **Candidate messaging.** `send_candidate_message` builds the email from a template, logs a `CandidateMessage` and sends it after commit. It is keyed on (application, kind, occasion), which is unique in the database, so it never sends the same message twice.
+  - **Needs attention** (`/attention/`, with a nav badge): closures awaiting a decision that you may make. Yours come first, and Admins and Hiring Managers also see everyone else's. An opening leaves the list once nobody is in progress.
+  - **History.** The opening page lists its events, newest first, for every role.
+  - **The Phase 9 delete page** now counts and lists the candidate's emails, and the success message counts them too. Phase 9's last criterion is ticked.
+  - **Seed:**
+    - Dev and Jade apply for UX Researcher, which the manager closes and cancels (two logged emails).
+    - The recruiter closes Support Specialist, which has no applicants.
+    - The recruiter closes QA Analyst while Ann is still at Applied, so it waits in the manager's Needs attention.
+  - **Checks:** 750 tests pass (93 new). `ruff check` and `ruff format` are clean. Two migrations (`openings/0003_openingevent`, `notifications/0001_initial`). The dev database was migrated and seeded twice, and a fresh copy was seeded twice; each second run changed nothing.
+- **Changes:**
+  - `accounts/permissions.py`: `CLOSURE_DECIDER_ROLES` and `can_decide_closure`; `can_manage_openings` now covers closing.
+  - `accounts/templatetags/accounts_tags.py`: the `can_decide_closure` filter.
+  - `openings/models.py`: `OpeningEvent` (kinds closed and applications cancelled), plus `with_active_count()` and `awaiting_closure_decision()` on openings.
+  - `openings/migrations/0003_openingevent.py`: the new model.
+  - `openings/services.py`: `close_refusal`, `close_opening`, `cancel_refusal`, `latest_closure`, `cancel_remaining_applications` and `CLOSURE_NOTE`.
+  - `openings/forms.py`:
+    - `status` is removed from the create and edit forms, so nothing can close or reopen an opening without its event;
+    - new `CloseOpeningForm`.
+  - `openings/views.py` and `urls.py`: `closure_context`, `OpeningCloseView` (`openings:close`) and `OpeningCancelRemainingView` (`openings:cancel_remaining`).
+  - `openings/admin.py`: status is read-only, with an events inline.
+  - Opening templates:
+    - new `jobopening_close.html`, `jobopening_cancel_remaining.html`, `partials/closure_panel.html` and `partials/event_history.html`;
+    - `jobopening_detail.html`: the Close button, the panel and the history;
+    - `jobopening_form.html`: the authority slot moves after location.
+  - `notifications/` (new app):
+    - `CandidateMessage` and its migration;
+    - `services.py` (`send_candidate_message`, `notify_authority_of_closure`, `render_email`, `send_after_commit`);
+    - `attention.py` (`closures_awaiting_decision`, `attention_count`);
+    - `views.py` and `urls.py` (`notifications:attention`), and the `notifications_tags` badge tag;
+    - the attention templates and the email text templates;
+    - a read-only admin.
+  - `config/settings.py` and `config/urls.py`: the app, and `/attention/`.
+  - `templates/partials/nav_links.html`: the Needs attention link and badge.
+  - `candidates/services.py`, `views.py` and `candidate_confirm_delete.html`: messages on the delete page.
+  - `accounts/management/commands/seed.py`:
+    - `SeedClosure`, `SEED_CLOSURES` and `seed_closure`;
+    - two UX Researcher applications and Jade's move;
+    - openings no longer seed a status directly.
+  - Icons `bell.svg` and `user-x.svg`, copied from lucide-static v1.49.0.
+  - Tests:
+    - new `openings/tests/test_closure_services.py` and `test_closure_views.py`;
+    - new `notifications/tests/test_services.py`, `test_attention.py` and `conftest.py`;
+    - additions to `accounts/tests/test_permissions.py`, `test_seed.py`, `candidates/tests/test_lifecycle_views.py`, `openings/tests/test_forms.py` and `openings/tests/conftest.py`.
+  - Docs:
+    - `CLAUDE.md`: the closure, messaging and attention conventions;
+    - `docs/TESTING.md`: on-commit email testing and the new fixtures;
+    - `plans/applicant-tracking-system.md`: Phase 10's ticks, and Phase 9's delete criterion.
+- **TDD:** the plan's three candidates, as approved.
+  1. **`can_decide_closure`.** A nine-row matrix of "may close", "decides on their own opening" and "decides elsewhere": a plain Recruiter closes but never decides, a Recruiter authority decides for their own opening only, and a demoted authority decides nothing. RED against a placeholder that returned False.
+  2. **`cancel_remaining_applications`.** An opening with an application at every stage. Only the five active ones become Rejected, each with exactly one closure row noted "Position closed."; Hired, Rejected and Withdrawn get no new history. RED against a placeholder that changed nothing.
+  3. **A candidate message is never sent twice.** The same identity twice gives one row and one email. A new occasion is sent. RED against a placeholder that returned None.
+- **Decisions:**
+  - `status` left the opening forms, and became read-only in the Django admin, so every closure writes its event. A closed opening can't be reopened in the UI until Phase 13.
+  - Close and cancel use confirmation pages (GET, then POST and a redirect), like the Phase 9 delete page.
+  - Emails go out after commit, and the log row is written inside the transaction.
+  - A cancellation's occasion is its "closed" event, so a later closure can email again.
+  - Cancel now writes its own event kind, which the PRD's list of kinds leaves out.
+  - Needs attention lists only what the user may decide, and the badge counts only their own.
+  - The authority is emailed even when they closed the opening themselves.
+- **Deviations:**
+  - Prompt 2 changed the brief. Instead of refusing a repeat with nothing left to cancel, Cancel now is repeatable: it does nothing, writes one cancel event per closure, keeps the unique message constraint, and rolls back completely on failure. Tests cover a repeat, a second cancel in the same closure, a later closure, and a forced failure at each of four writes followed by a retry.
+  - Prompt 4 asked that the service check permissions and the closed status before changing anything. It locks and re-reads the opening and calls `cancel_refusal()` (permission, then closed) before reading any application to move.
+- **Sideways:**
+  - Two long bash heredocs failed to parse and ran nothing. Those edits went in through the Write tool and scratchpad scripts instead.
+  - A `cd` into the email templates folder changed the working directory for the next command; later commands use absolute paths.
+  - Test setup mistakes, each a mechanical repair:
+    - recording an application after the opening had closed (refused, correctly);
+    - the `hiring_manager` fixture has no email address;
+    - flash messages pile up when redirects aren't followed, so the view tests read the newest one.
+  - The Phase 6 seed test expected each seeded path to end where it stopped. Jade's UX path is now cancelled by its closure, so the test leaves closure rows out and expects Rejected there.
+  - The console printed the long email lines with quoted-printable `=` breaks. The email text is now wrapped to short lines, and tests compare whitespace-collapsed text.
+  - Smaller slips:
+    - a `pluralize:"them,them"` slip on two templates;
+    - a docstring line over 100 characters;
+    - a nested `with` that ruff flagged (SIM117).
+
 ## 2026-10-20 — Applicant Tracking System: Phase 9/14, Candidate lifecycle
 
 ### Prompts

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Cancel remaining applications · {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+{% with count=active_applications|length %}
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-error/40 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-error" aria-hidden="true"></div>
+  <div class="card-body gap-5">
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-error/10 text-error" aria-hidden="true">{% icon "user-x" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Cancel {{ count }} remaining application{{ count|pluralize }}?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.title }} · Closed</p>
+      </div>
+    </div>
+
+    <div role="alert" class="alert alert-error alert-soft items-start">
+      {% icon "mail" "size-5 shrink-0" %}
+      <p>Each applicant below moves to Rejected with the note "Position closed.", and gets one email saying the position has closed. Their history keeps every stage they reached.</p>
+    </div>
+
+    <ul class="grid gap-2" data-testid="cancel-applicants">
+      {% for application in active_applications %}
+      <li class="flex flex-wrap items-center gap-3 rounded-box border border-base-300 p-3" data-testid="cancel-applicant">
+        {% include "partials/avatar.html" with user=application.candidate size="w-8" text="text-xs" %}
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold break-words">{{ application.candidate.full_name }}</p>
+          <p class="text-xs break-all opacity-60">{{ application.candidate.email }}</p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 text-sm">
+          {% include "applications/partials/stage_badge.html" %}
+          {% icon "arrow-right" "size-4 opacity-60" %}
+          <span class="badge badge-sm badge-error badge-soft">Rejected</span>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" class="flex flex-wrap justify-end gap-2">
+      {% csrf_token %}
+      <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost">Keep them</a>
+      <button type="submit" class="btn btn-error gap-2" data-testid="confirm-cancel-remaining">
+        {% icon "user-x" "size-4" %} Cancel {{ count }} application{{ count|pluralize }}
+      </button>
+    </form>
+  </div>
+</section>
+{% endwith %}
+{% endblock %}
