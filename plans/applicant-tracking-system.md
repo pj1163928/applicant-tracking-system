@@ -351,12 +351,12 @@ Instead of cancelling, a decision-maker can set a grace period of N days, with a
 
 ### Acceptance criteria
 
-- [ ] Setting a grace period stores the end date (in the project time zone) and expiry action, writes an OpeningEvent and emails every active candidate once.
-- [ ] Extending needs a note, moves the end date and writes an OpeningEvent.
-- [ ] The 3-day and 1-day reminders are sent on the right days, with wording that matches the expiry action. Reminders whose date has already passed (grace periods under 3 days) are skipped.
-- [ ] On expiry, auto-cancel runs the cancel-now flow, and flag-only marks the opening overdue and notifies staff.
-- [ ] Running `process_grace_periods` twice on the same day sends no duplicate emails and makes no extra changes.
-- [ ] Tests control "today" so that the schedule can be checked without waiting.
+- [x] Setting a grace period stores the end date (in the project time zone) and expiry action, writes an OpeningEvent and emails every active candidate once.
+- [x] Extending needs a note, moves the end date and writes an OpeningEvent.
+- [x] The 3-day and 1-day reminders are sent on the right days, with wording that matches the expiry action. Reminders whose date has already passed (grace periods under 3 days) are skipped.
+- [x] On expiry, auto-cancel runs the cancel-now flow, and flag-only marks the opening overdue and notifies staff.
+- [x] Running `process_grace_periods` twice on the same day sends no duplicate emails and makes no extra changes.
+- [x] Tests control "today" so that the schedule can be checked without waiting.
 
 ### TDD
 

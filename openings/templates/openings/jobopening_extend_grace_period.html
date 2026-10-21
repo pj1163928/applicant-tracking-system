@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Extend the grace period · {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-warning/50 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-warning" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-warning/15 text-warning" aria-hidden="true">{% icon "calendar-plus" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Extend the grace period?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.title }} · {% if opening.is_overdue %}Overdue since{% else %}Ends{% endif %} {{ opening.grace_period_ends|date:"M j, Y" }}</p>
+      </div>
+    </div>
+
+    <ul class="grid gap-2 text-sm" data-testid="extend-effects">
+      <li class="flex items-start gap-2">{% icon "calendar-plus" "size-4 mt-0.5 shrink-0 opacity-70" %} The {{ active_applications|length }} applicant{{ active_applications|length|pluralize }} still in progress get more time. When it ends, {% if opening.grace_expiry_action == "auto_cancel" %}the remaining applications are still cancelled{% else %}the opening is still flagged as overdue{% endif %}.</li>
+      <li class="flex items-start gap-2">{% icon "mail" "size-4 mt-0.5 shrink-0 opacity-70" %} Candidates get no email now, but their 3-day and 1-day reminders follow the new date.</li>
+      {% if opening.is_overdue %}<li class="flex items-start gap-2 font-medium" data-testid="extend-clears-overdue">{% icon "triangle-alert" "size-4 mt-0.5 shrink-0 text-error" %} The opening stops being overdue.</li>{% endif %}
+    </ul>
+
+    <div class="max-w-xs">
+      <label class="fieldset-legend pt-0" for="{{ form.ends.id_for_label }}">{{ form.ends.label }}</label>
+      {{ form.ends }}
+      {% for error in form.ends.errors %}<p class="mt-1 text-sm text-error" data-testid="error-ends">{{ error }}</p>{% empty %}<p class="label mt-1 whitespace-normal">From {{ earliest_end|date:"M j, Y" }} to {{ latest_end|date:"M j, Y" }}.</p>{% endfor %}
+    </div>
+
+    <div>
+      <label class="fieldset-legend pt-0" for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>
+      {{ form.note }}
+      {% for error in form.note.errors %}<p class="mt-1 text-sm text-error" data-testid="error-note">{{ error }}</p>{% empty %}<p class="label mt-1 whitespace-normal">{{ form.note.help_text }}</p>{% endfor %}
+    </div>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2" data-testid="confirm-extend-grace-period">
+        {% icon "calendar-plus" "size-4" %} Extend
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

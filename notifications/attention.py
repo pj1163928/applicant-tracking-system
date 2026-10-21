@@ -1,7 +1,8 @@
 """What the Needs attention panel lists: decisions waiting on the signed-in user.
 
-For now that is closed openings whose applicants are still in progress (closures
-awaiting a decision). Each item is one the user may decide, by
+For now that is closed openings whose applicants are still in progress and
+which have no grace period running: closures awaiting a decision, and overdue
+ones (a flag-overdue grace period that has ended). Each item is one the user may decide, by
 ``accounts.permissions.can_decide_closure``; the openings they are the
 designated authority of come first.
 """
@@ -57,6 +58,8 @@ def closures_awaiting_decision(user: AnyUser) -> list[AttentionItem]:
 
 def attention_count(user: AnyUser) -> int:
     """Return how many closures await a decision from ``user`` as designated authority.
+
+    Overdue openings count too; ones whose grace period is still running don't.
 
     The navigation badge shows this. Openings that Admins and Hiring Managers
     could decide for others aren't counted, so the badge means "yours".

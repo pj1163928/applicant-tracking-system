@@ -10,6 +10,8 @@ class CandidateMessageKind(models.TextChoices):
     """Which email a candidate was sent. Also reachable as ``CandidateMessage.Kind``."""
 
     CANCELLED = "cancelled", "Application cancelled: position closed"
+    GRACE_PERIOD_SET = "grace_period_set", "Grace period set"
+    GRACE_REMINDER = "grace_reminder", "Grace period reminder"
 
 
 class CandidateMessage(models.Model):

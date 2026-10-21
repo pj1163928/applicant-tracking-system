@@ -28,6 +28,112 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-21 — Applicant Tracking System: Phase 11/14, Grace periods and reminders
+
+### Prompts
+
+1. The `/implement` skill, given `@HANDOFF.md`.
+2. Ok looks good proceed with next test
+3. Looks good, jsut keep expiry processing out of cycle 2. Cycle 3 should independently test expiry boundaries, actions, and reopended applications before implementing the code that passes them.
+4. Looks good move to development
+
+### Summary
+
+- **Outcome:** Phase 11 is built, picking up from the approved brief in `HANDOFF.md` (logged in the entry below).
+  - Decision makers can now give a closed opening's remaining applicants a grace period of 1–90 days, ending in auto-cancel or flag overdue, and extend it with a note.
+  - Candidates get an email when a grace period is set, then a 3-day and a 1-day reminder. The daily `process_grace_periods` command (with `--today` for demos) sends the reminders and handles the end on the end date itself, once.
+  - Overdue openings come back to Needs attention with an "Overdue" badge.
+  - `uv run pytest`: 876 passed. `uv run ruff check .` and `uv run ruff format .` are clean. `seed` run twice on a fresh throwaway database left every table identical.
+- **Changes:**
+  - `openings/grace.py`: new pure module. `due_reminder(ends=, set_on=, today=)` and `grace_period_has_ended(ends=, today=)`.
+  - `openings/models.py`: four grace fields on `JobOpening` with a check constraint keeping them in step; `GraceExpiryAction`; the states `has_grace_period`, `grace_period_running`, `is_overdue` and `auto_cancelled`; the three new event kinds; `awaiting_closure_decision()` now leaves out running grace periods; and `with_grace_period_running()`.
+  - `openings/migrations/0004_grace_period.py` and `notifications/migrations/0002_grace_period_message_kinds.py`: new.
+  - `openings/services.py`:
+    - `set_grace_period`, `extend_grace_period` (with `set_grace_refusal`, `extend_refusal` and `extend_bounds`);
+    - `process_grace_periods`, `send_due_reminders`, `expire_grace_period` and `grace_decider`;
+    - `decide_refusal` and `closure_occasion`, pulled out of the cancel code so the new services reuse them.
+  - `notifications/services.py`: `send_candidate_message` gains `context`, and there is a new `notify_authority_of_overdue`. `notifications/models.py` adds the message kinds `grace_period_set` and `grace_reminder`.
+  - `notifications/templates/notifications/email/`: new emails for a grace period being set, the reminder and the overdue notice. They say "will be closed" or "may be closed" to match the expiry action, and "our team will be in touch to complete the next step".
+  - `notifications/management/commands/process_grace_periods.py`: new command with `--today YYYY-MM-DD`.
+  - `openings/views.py` and `openings/urls.py`:
+    - `ClosureDeciderMixin`, taken out of `OpeningCancelRemainingView`, which now uses it;
+    - `GracePeriodSetView` (`openings:grace_period`) and `GracePeriodExtendView` (`openings:extend_grace_period`);
+    - `closure_context` adds `grace_days_left`.
+  - `openings/forms.py`: `GracePeriodForm` and `ExtendGracePeriodForm`.
+  - Templates:
+    - new pages `jobopening_grace_period.html` and `jobopening_extend_grace_period.html`;
+    - the closure panel shows the grace period's state, with the Give, Extend and Cancel actions;
+    - the event history has icons for the grace events;
+    - Needs attention gets the "Overdue" badge and line.
+  - `templates/icons/`: `hourglass.svg` and `calendar-plus.svg`, from lucide-static v1.49.0.
+  - `openings/admin.py`: the grace fields are read-only.
+  - `accounts/management/commands/seed.py`: the recruiter closes Data Engineer (Dev at Applied) and gives it a 4-day flag-overdue grace period, set only in the run that creates the opening.
+  - Tests:
+    - new: `openings/tests/test_grace.py`, `test_grace_services.py`, `test_grace_views.py` and `notifications/tests/test_process_grace_periods.py`;
+    - additions to `openings/tests/test_models.py`, `notifications/tests/test_attention.py` and `notifications/tests/test_services.py`;
+    - `grace_directly` in `openings/tests/conftest.py`;
+    - `accounts/tests/test_seed.py` updated for the fourth closure, with a new test that a re-run keeps a grace period staff have extended.
+  - `CLAUDE.md` and `docs/TESTING.md`: the grace-period conventions and the new fixture. `plans/applicant-tracking-system.md`: all six Phase 11 criteria ticked.
+- **TDD:** the three approved candidates, each RED on an assertion, approved, then GREEN.
+  1. `due_reminder` against a hand-written 16-row table: 7-, 4-, 3-, 2- and 1-day grace periods, the end date and the day after. A plain boundary test for `grace_period_has_ended` (Nov 9 / Nov 10 / Nov 11) sits beside it, per instructions 1 and 2 of the handoff.
+  2. Running `process_grace_periods` twice on the 3-day reminder's day sends the reminder to active candidates only, and the second run writes and sends nothing. As the user asked in prompt 3, cycle 2 covered reminders only, and no expiry code existed until cycle 3.
+  3. The expiry, in two tests written before any expiry code:
+     - action × (day before, end date, day after), checked against hand-written outcome tables;
+     - "only once": after the end, someone puts an applicant back in progress, then runs on the same day, the next day and Nov 20 change nothing. That covers instruction 3.
+- **Decisions** (gaps the brief left):
+  - The extend form accepts end dates up to 90 days from today, to match the 1–90 limit for setting.
+  - Setting refuses an opening with nobody in progress (`NOTHING_IN_PROGRESS`). Extending doesn't require anyone in progress.
+  - "The person who set it" means the `by` of the "grace period set" event since the latest closure.
+  - A skipped opening keeps `grace_expired_on` empty, so a later run can still end it once someone can decide.
+  - The expiry event is labelled "Grace period ended"; its kind stays `grace_period_expired`.
+  - Its note gives the end date, how many applicants were still in progress, and the outcome.
+- **Deviations:** Prompt 3 had cycle 2 cover reminders only, and cycle 3 test boundaries, both actions and reopened applications on its own before any expiry code was written. I had proposed that split in the cycle 2 RED message, and the user confirmed it.
+- **Sideways:**
+  - Bash heredocs that held Python with nested quotes failed to parse twice. One command also began with a stray `cat >` that waited on standard input until it timed out; I stopped it and moved those edits into scripts in the scratchpad.
+  - A Python edit script's old text for the seed docstring didn't match the file, so the script stopped before writing anything; I corrected the text and ran it again.
+  - Cycle 3's reopen test first failed on setup, not on an assertion: Dee's application was recorded after the fixture had closed the opening. I moved the close out of the `ending` fixture and into each test, a mechanical repair with no assertion changed.
+  - In the cycle 3 GREEN summary I said the expiry implemented the behavior, not just the tests. That held up: 51 later service tests passed against it unchanged.
+  - My first anonymous-redirect view test reversed `login` instead of `accounts:login`; fixed.
+  - Note for later phases: Phase 13's reopen must clear the four grace fields. Phase 12's in-progress view can read `grace_period_running` and `is_overdue`.
+
+## 2026-10-20 — Applicant Tracking System: Phase 11/14, Grace periods and reminders (brief and handoff)
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 11`.
+2. The `/handoff` skill, given: "The next session will start off by asking TDD questions: Also for the next phase define grace period expiry boundry explicitly in tests. Make sure that expiry is processed on the end date itself, not the following day. Also make sure that the end-of-period actions runs once only. Everything else is good so far."
+3. Go ahead and also make sure that PROMPTS are included for the PROMPTS.md file
+
+### Summary
+
+- **Outcome:** A planning session only. No application code was written and no tests were run.
+  - I read the plan, the PRD, the testing guide and the Phase 10 code, then wrote the Phase 11 brief.
+  - The user approved the brief ("Everything else is good so far") and asked for a handoff, so the build happens in the next session.
+- **Changes:**
+  - `HANDOFF.md`: new. It records the approved brief, the user's three extra instructions for the tests, the TDD candidates, and the steps for finishing the phase.
+    - It replaces the design handoff that Phase 1 deleted; CLAUDE.md still links to this file.
+  - `PROMPTS.md`: this entry.
+- **TDD:** The plan's three candidates, handed to the `tdd` skill unchanged. No cycle has started; the next session begins at the first RED stop.
+  1. Which reminder is due on a given date.
+  2. `process_grace_periods` is safe to run twice.
+  3. The expiry action: auto-cancel against flag overdue.
+- **Decisions** (proposed in the brief and approved; the full list is in `HANDOFF.md`):
+  - **Dates:** a grace period of N days set on day D ends on D+N. The 3-day and 1-day reminders fall on ends−3 and ends−1. A reminder dated on or before the day the grace period was set or extended is skipped, and a late run sends only the most recent reminder that's due.
+  - **Two fields beyond the PRD:** `grace_period_set_on` and `grace_expired_on`. The second makes the end-of-period action run only once.
+  - **Extending** takes a new end date and a required note. It works while the grace period is running or overdue, and sends candidates no email.
+  - **Needs attention** drops an opening while its grace period runs, and shows it again once it is overdue.
+  - **Who the history names:** automatic actions are recorded as done by whoever set the grace period, or by the designated authority if that person can no longer decide.
+  - **The command** gets a `--today` option for demos and manual checks.
+- **Deviations:** Prompt 2 added three instructions that outrank the brief:
+  - write the expiry boundary out explicitly in tests;
+  - process the expiry on the end date itself, not the day after;
+  - make sure the end-of-period action runs only once.
+
+  I offered a `/prototype` of the closure panel's grace-period states; it hasn't been asked for.
+- **Sideways:**
+  - The first survey command chained `wc` over a `HANDOFF.md` that no longer existed, so it exited 1. The git output it needed still came through.
+  - The openings views and templates were too long for one tool result, so I read them from the saved output file.
+
 ## 2026-10-20 — Applicant Tracking System: Phase 10/14, Closing an opening and "cancel now"
 
 ### Prompts

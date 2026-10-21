@@ -84,3 +84,22 @@ def close_directly(opening, by) -> OpeningEvent:
     JobOpening.objects.filter(pk=opening.pk).update(status=JobOpening.Status.CLOSED)
     opening.status = JobOpening.Status.CLOSED
     return OpeningEvent.objects.create(opening=opening, kind=OpeningEvent.Kind.CLOSED, by=by)
+
+
+def grace_directly(opening, *, by, ends, set_on, action) -> OpeningEvent:
+    """Give closed ``opening`` a grace period with direct writes, without ``set_grace_period``.
+
+    No candidate emails are sent, so tests of ``process_grace_periods`` see only its own.
+    """
+    fields = {
+        "grace_period_ends": ends,
+        "grace_expiry_action": action,
+        "grace_period_set_on": set_on,
+        "grace_expired_on": None,
+    }
+    JobOpening.objects.filter(pk=opening.pk).update(**fields)
+    for name, value in fields.items():
+        setattr(opening, name, value)
+    return OpeningEvent.objects.create(
+        opening=opening, kind=OpeningEvent.Kind.GRACE_PERIOD_SET, by=by
+    )

@@ -2,20 +2,51 @@
 {% comment %}
 A closed opening's remaining applicants and what may be done about them.
 Shown only while the opening is closed and has active applications. Expects
-`opening` and `active_applications`. Decision actions show only to users
-allowed by can_decide_closure; the server refuses everyone else too.
+`opening`, `active_applications` and `grace_days_left` (closure_context). The
+grace period's state (running, overdue, or ended with an auto-cancel) shows to
+everyone; the decision actions show only to users allowed by
+can_decide_closure, and the server refuses everyone else too.
 {% endcomment %}
 {% with count=active_applications|length authority=opening.designated_authority %}
-<section id="closure" class="card mt-6 overflow-hidden border border-warning/50 bg-base-100 shadow-sm" aria-labelledby="closure-heading" data-testid="closure-panel">
-  <div class="h-1.5 bg-warning" aria-hidden="true"></div>
+<section id="closure" class="card mt-6 overflow-hidden border {% if opening.is_overdue %}border-error/50{% else %}border-warning/50{% endif %} bg-base-100 shadow-sm" aria-labelledby="closure-heading" data-testid="closure-panel">
+  <div class="h-1.5 {% if opening.is_overdue %}bg-error{% else %}bg-warning{% endif %}" aria-hidden="true"></div>
   <div class="card-body gap-4">
     <div class="flex items-start gap-3">
-      <span class="grid size-10 shrink-0 place-items-center rounded-full bg-warning/15 text-warning" aria-hidden="true">{% icon "bell" "size-5" %}</span>
+      <span class="grid size-10 shrink-0 place-items-center rounded-full {% if opening.is_overdue %}bg-error/10 text-error{% else %}bg-warning/15 text-warning{% endif %}" aria-hidden="true">{% if opening.grace_period_running %}{% icon "hourglass" "size-5" %}{% elif opening.is_overdue %}{% icon "triangle-alert" "size-5" %}{% else %}{% icon "bell" "size-5" %}{% endif %}</span>
       <div class="min-w-0">
-        <h2 id="closure-heading" class="text-lg font-bold">{{ count }} applicant{{ count|pluralize }} still in progress</h2>
+        <h2 id="closure-heading" class="flex flex-wrap items-center gap-2 text-lg font-bold">
+          {{ count }} applicant{{ count|pluralize }} still in progress
+          {% if opening.is_overdue %}<span class="badge badge-sm badge-error" data-testid="closure-overdue">Overdue</span>{% elif opening.grace_period_running %}<span class="badge badge-sm badge-warning badge-soft" data-testid="closure-in-grace">In grace period</span>{% endif %}
+        </h2>
         <p class="text-sm opacity-80">This opening is closed, but {{ count|pluralize:"this applicant,these applicants" }} can keep moving, including into Offer and Hired. Someone with closure authority decides what happens to them.</p>
       </div>
     </div>
+
+    {% if opening.grace_period_running %}
+    <div class="flex flex-wrap items-start gap-3 rounded-box bg-warning/10 p-3" data-testid="grace-period">
+      {% icon "hourglass" "size-5 mt-0.5 shrink-0 text-warning" %}
+      <div class="min-w-0 text-sm">
+        <p class="font-semibold">
+          Grace period ends {{ opening.grace_period_ends|date:"M j, Y" }}
+          <span class="font-normal opacity-70">· {% if grace_days_left %}{{ grace_days_left }} day{{ grace_days_left|pluralize }} left{% else %}ends today{% endif %}</span>
+        </p>
+        <p class="opacity-80">When it ends, {% if opening.grace_expiry_action == "auto_cancel" %}the remaining applications will be cancelled and each candidate emailed{% else %}the opening will be flagged as overdue and {{ authority.get_full_name|default:authority.username }} emailed{% endif %}. Candidates are reminded 3 days and 1 day before.</p>
+      </div>
+    </div>
+    {% elif opening.is_overdue %}
+    <div class="flex flex-wrap items-start gap-3 rounded-box bg-error/10 p-3" data-testid="grace-period">
+      {% icon "triangle-alert" "size-5 mt-0.5 shrink-0 text-error" %}
+      <div class="min-w-0 text-sm">
+        <p class="font-semibold">The grace period ended {{ opening.grace_period_ends|date:"M j, Y" }}</p>
+        <p class="opacity-80">It was set to flag the opening rather than cancel anyone, so these applicants are waiting for a decision: extend the grace period, or cancel the remaining applications.</p>
+      </div>
+    </div>
+    {% elif opening.auto_cancelled %}
+    <div class="flex flex-wrap items-start gap-3 rounded-box bg-base-200/70 p-3" data-testid="grace-period">
+      {% icon "history" "size-5 mt-0.5 shrink-0 opacity-70" %}
+      <p class="min-w-0 text-sm opacity-80">The grace period ended {{ opening.grace_period_ends|date:"M j, Y" }} and its applications were cancelled. {{ count|pluralize:"This applicant was,These applicants were" }} put back in progress since.</p>
+    </div>
+    {% endif %}
 
     <ul class="flex flex-wrap gap-2" data-testid="closure-applicants">
       {% for application in active_applications %}
@@ -32,9 +63,20 @@ allowed by can_decide_closure; the server refuses everyone else too.
       <p class="text-sm">
         {% if authority == user %}You're the designated authority, so this decision is yours.{% else %}You can decide for {{ authority.get_full_name|default:authority.username }}, the designated authority.{% endif %}
       </p>
-      <a href="{% url 'openings:cancel_remaining' opening.pk %}" class="btn btn-error btn-outline gap-2" data-testid="cancel-remaining">
-        {% icon "user-x" "size-4" %} Cancel remaining applications
-      </a>
+      <div class="flex flex-wrap gap-2">
+        {% if not opening.has_grace_period %}
+        <a href="{% url 'openings:grace_period' opening.pk %}" class="btn btn-primary gap-2" data-testid="set-grace-period">
+          {% icon "hourglass" "size-4" %} Give a grace period
+        </a>
+        {% elif not opening.auto_cancelled %}
+        <a href="{% url 'openings:extend_grace_period' opening.pk %}" class="btn btn-primary btn-outline gap-2" data-testid="extend-grace-period">
+          {% icon "calendar-plus" "size-4" %} Extend grace period
+        </a>
+        {% endif %}
+        <a href="{% url 'openings:cancel_remaining' opening.pk %}" class="btn btn-error btn-outline gap-2" data-testid="cancel-remaining">
+          {% icon "user-x" "size-4" %} Cancel remaining applications
+        </a>
+      </div>
     </div>
     {% else %}
     <p class="flex items-center gap-2 border-t border-base-300 pt-4 text-sm opacity-80" data-testid="closure-waiting">

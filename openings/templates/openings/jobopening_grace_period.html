@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Give a grace period · {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+{% with count=active_applications|length authority=opening.designated_authority %}
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-warning/50 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-warning" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-warning/15 text-warning" aria-hidden="true">{% icon "hourglass" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Give {{ count }} applicant{{ count|pluralize }} a grace period?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.title }} · Closed</p>
+      </div>
+    </div>
+
+    <div role="alert" class="alert alert-info alert-soft items-start">
+      {% icon "mail" "size-5 shrink-0" %}
+      <p>Each applicant below gets one email now saying how long they have, and reminders 3 days and 1 day before it ends. They keep moving on the board in the meantime.</p>
+    </div>
+
+    <ul class="flex flex-wrap gap-2" data-testid="grace-applicants">
+      {% for application in active_applications %}
+      <li class="inline-flex items-center gap-2 rounded-box bg-base-200/70 py-1 pr-2 pl-1">
+        {% include "partials/avatar.html" with user=application.candidate size="w-6" text="text-[0.6rem]" %}
+        <span class="text-sm font-medium">{{ application.candidate.full_name }}</span>
+        {% include "applications/partials/stage_badge.html" %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="max-w-48">
+      <label class="fieldset-legend pt-0" for="{{ form.days.id_for_label }}">{{ form.days.label }}</label>
+      {{ form.days }}
+      {% for error in form.days.errors %}<p class="mt-1 text-sm text-error" data-testid="error-days">{{ error }}</p>{% empty %}<p class="label mt-1 whitespace-normal">{{ form.days.help_text }}</p>{% endfor %}
+    </div>
+
+    <fieldset class="grid gap-2" data-testid="grace-actions">
+      <legend class="fieldset-legend pt-0">{{ form.action.label }}</legend>
+      {% for choice in form.action %}
+      <label class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 p-3 transition-colors hover:bg-base-200/60 has-checked:border-primary has-checked:bg-primary/5 motion-reduce:transition-none">
+        {{ choice.tag }}
+        <span class="min-w-0">
+          <span class="block font-medium">{{ choice.choice_label }}</span>
+          <span class="block text-sm opacity-70">
+            {% if choice.data.value == "auto_cancel" %}Anyone still in progress moves to Rejected with the note "Position closed." and gets one email. Candidates are told their application will be closed.{% else %}Nobody's application changes. {% if authority == user %}You're{% else %}{{ authority.get_full_name|default:authority.username }} is{% endif %} emailed, and the opening shows as overdue in Needs attention. Candidates are told their application may be closed.{% endif %}
+          </span>
+        </span>
+      </label>
+      {% endfor %}
+      {% for error in form.action.errors %}<p class="text-sm text-error" data-testid="error-action">{{ error }}</p>{% endfor %}
+    </fieldset>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2" data-testid="confirm-grace-period">
+        {% icon "hourglass" "size-4" %} Give a grace period
+      </button>
+    </div>
+  </form>
+</section>
+{% endwith %}
+{% endblock %}

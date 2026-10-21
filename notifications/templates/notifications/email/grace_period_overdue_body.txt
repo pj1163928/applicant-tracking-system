@@ -1,0 +1,11 @@
+{% autoescape off %}Hello {{ authority.first_name|default:authority.username }},
+
+The grace period for {{ opening.title }} ({{ opening.department }})
+ended on {{ opening.grace_period_ends|date:"F j, Y" }}, and {{ active_count }} applicant{{ active_count|pluralize }} {{ active_count|pluralize:"is,are" }} still
+in progress. It was set to flag the opening as overdue rather than
+cancel them, so nothing has changed for them yet.
+
+As the opening's designated authority, you decide what happens
+next: extend the grace period, or cancel the remaining
+applications. Open Needs attention in the ATS to follow up.
+{% endautoescape %}

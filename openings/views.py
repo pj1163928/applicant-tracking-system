@@ -4,6 +4,7 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.core.exceptions import ValidationError
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.cache import patch_vary_headers
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, TemplateView, UpdateView
@@ -18,14 +19,28 @@ from accounts.permissions import (
 )
 from applications.stages import ACTIVE_STAGES
 from config.htmx import is_htmx_partial
-from openings.forms import CloseOpeningForm, JobOpeningCreateForm, JobOpeningForm, SkillAttachForm
+from openings.forms import (
+    CloseOpeningForm,
+    ExtendGracePeriodForm,
+    GracePeriodForm,
+    JobOpeningCreateForm,
+    JobOpeningForm,
+    SkillAttachForm,
+)
 from openings.models import JobOpening, Skill
 from openings.scopes import ALL, MINE, resolve_scope
 from openings.services import (
+    INVALID_GRACE_END,
+    NOTE_REQUIRED,
     attach_skill,
     cancel_remaining_applications,
     close_opening,
     detach_skill,
+    display_date,
+    extend_bounds,
+    extend_grace_period,
+    plural_days,
+    set_grace_period,
 )
 
 
@@ -82,13 +97,21 @@ class OpeningDetailView(DetailView):
 
 
 def closure_context(opening: JobOpening) -> dict:
-    """What an opening's closure panel and event history show."""
+    """What an opening's closure panel and event history show.
+
+    ``grace_days_left`` is how many days a running grace period has left
+    (0 on its end date, before the daily run handles it), or None.
+    """
     active = opening.applications.filter(stage__in=ACTIVE_STAGES).select_related("candidate")
+    days_left = None
+    if opening.grace_period_running:
+        days_left = max((opening.grace_period_ends - timezone.localdate()).days, 0)
     return {
         "active_applications": list(
             active.order_by("candidate__last_name", "candidate__first_name")
         ),
         "events": list(opening.events.select_related("by")),
+        "grace_days_left": days_left,
     }
 
 
@@ -148,18 +171,17 @@ class OpeningCloseView(RoleRequiredMixin, DetailView):
         return redirect(opening)
 
 
-class OpeningCancelRemainingView(UserPassesTestMixin, DetailView):
-    """Cancel now: move a closed opening's active applications to Rejected, after confirming.
+class ClosureDeciderMixin(UserPassesTestMixin):
+    """Refuse with 403 unless ``can_decide_closure`` allows the user on this opening.
 
-    Only users allowed by ``can_decide_closure`` on this opening; everyone else,
-    Recruiters who aren't its authority included, gets 403 for GET and POST.
-    Goes through ``cancel_remaining_applications()``, so repeating it (a double
-    submission, say) changes nothing.
+    For confirmation pages about a closed opening's applicants (cancel now,
+    grace periods). Everyone else, Recruiters who aren't its authority
+    included, gets 403 for GET and POST. Loads the opening once, as
+    ``self.object``, and adds ``closure_context()`` to the page.
     """
 
     raise_exception = True
     context_object_name = "opening"
-    template_name = "openings/jobopening_cancel_remaining.html"
 
     def test_func(self) -> bool:
         self.object = get_object_or_404(
@@ -170,6 +192,20 @@ class OpeningCancelRemainingView(UserPassesTestMixin, DetailView):
     def get_object(self, queryset=None) -> JobOpening:
         return self.object
 
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | closure_context(self.object)
+
+
+class OpeningCancelRemainingView(ClosureDeciderMixin, DetailView):
+    """Cancel now: move a closed opening's active applications to Rejected, after confirming.
+
+    Goes through ``cancel_remaining_applications()``, so repeating it (a double
+    submission, say) changes nothing. Also works during a grace period; its
+    end then has nothing left to cancel.
+    """
+
+    template_name = "openings/jobopening_cancel_remaining.html"
+
     def get(self, request, *args, **kwargs):
         context = self.get_context_data()
         if self.object.is_open:
@@ -179,9 +215,6 @@ class OpeningCancelRemainingView(UserPassesTestMixin, DetailView):
             messages.info(request, f"No applicants for {self.object.title} are still in progress.")
             return redirect(self.object)
         return self.render_to_response(context)
-
-    def get_context_data(self, **kwargs):
-        return super().get_context_data(**kwargs) | closure_context(self.object)
 
     def post(self, request, *args, **kwargs):
         opening = self.object
@@ -202,6 +235,132 @@ class OpeningCancelRemainingView(UserPassesTestMixin, DetailView):
                 request, f"Nothing to cancel: no applicants for {opening.title} are in progress."
             )
         return redirect(opening)
+
+
+class GracePeriodSetView(ClosureDeciderMixin, DetailView):
+    """Give a closed opening's remaining applicants a grace period, from a confirmation page.
+
+    Goes through ``set_grace_period()``, which emails each of them once. An
+    opening that is open, already has a grace period, or has nobody in
+    progress sends the user back to it with a message.
+    """
+
+    template_name = "openings/jobopening_grace_period.html"
+
+    def get(self, request, *args, **kwargs):
+        context = self.get_context_data(form=GracePeriodForm())
+        refusal = self.unavailable(context)
+        if refusal:
+            messages.info(request, refusal)
+            return redirect(self.object)
+        return self.render_to_response(context)
+
+    def unavailable(self, context: dict) -> str:
+        """Why this page has nothing to offer for the opening, or "" if it does."""
+        opening = self.object
+        if opening.is_open:
+            return f"{opening.title} is open, so its applicants need no grace period."
+        if opening.has_grace_period:
+            return f"{opening.title} already has a grace period. Extend it instead."
+        if not context["active_applications"]:
+            return f"No applicants for {opening.title} are still in progress."
+        return ""
+
+    def post(self, request, *args, **kwargs):
+        opening = self.object
+        form = GracePeriodForm(request.POST)
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(form=form))
+        try:
+            set_grace_period(
+                opening,
+                days=form.cleaned_data["days"],
+                action=form.cleaned_data["action"],
+                by=request.user,
+            )
+        except ValidationError as error:
+            messages.info(request, error.messages[0])
+            return redirect(opening)
+        count = len(closure_context(opening)["active_applications"])
+        who = "The applicant has" if count == 1 else f"All {count} applicants have"
+        messages.success(
+            request,
+            f"Gave the applicants for {opening.title} a grace period of "
+            f"{plural_days(form.cleaned_data['days'])}, ending "
+            f"{display_date(opening.grace_period_ends)}. {who} been emailed.",
+        )
+        return redirect(opening)
+
+
+class GracePeriodExtendView(ClosureDeciderMixin, DetailView):
+    """Move a grace period's end date, with a note, from a confirmation page.
+
+    Goes through ``extend_grace_period()``. Works while the grace period runs
+    and once a flag-overdue one has ended; candidates get no email, but their
+    reminders follow the new date. An opening with nothing to extend sends the
+    user back to it with a message.
+    """
+
+    template_name = "openings/jobopening_extend_grace_period.html"
+
+    def get(self, request, *args, **kwargs):
+        refusal = self.unavailable()
+        if refusal:
+            messages.info(request, refusal)
+            return redirect(self.object)
+        return self.render_to_response(self.get_context_data(form=ExtendGracePeriodForm()))
+
+    def unavailable(self) -> str:
+        """Why the opening's grace period can't be extended, or "" if it can."""
+        opening = self.object
+        if opening.is_open or not opening.has_grace_period:
+            return f"{opening.title} has no grace period to extend."
+        if opening.auto_cancelled:
+            return (
+                f"The grace period for {opening.title} has ended and its applications were "
+                "cancelled, so it can't be extended."
+            )
+        return ""
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.object.has_grace_period:
+            earliest, latest = extend_bounds(self.object, today=timezone.localdate())
+            context |= {"earliest_end": earliest, "latest_end": latest}
+            form = context.get("form")
+            if form is not None:
+                form.fields["ends"].widget.attrs |= {
+                    "min": earliest.isoformat(),
+                    "max": latest.isoformat(),
+                }
+        return context
+
+    def post(self, request, *args, **kwargs):
+        opening = self.object
+        form = ExtendGracePeriodForm(request.POST)
+        if form.is_valid():
+            try:
+                extend_grace_period(
+                    opening,
+                    ends=form.cleaned_data["ends"],
+                    note=form.cleaned_data["note"],
+                    by=request.user,
+                )
+            except ValidationError as error:
+                fields = {INVALID_GRACE_END: "ends", NOTE_REQUIRED: "note"}
+                if error.code not in fields:
+                    messages.info(request, error.messages[0])
+                    return redirect(opening)
+                form.add_error(fields[error.code], error)
+            else:
+                messages.success(
+                    request,
+                    f"Extended the grace period for {opening.title} to "
+                    f"{display_date(opening.grace_period_ends)}. Reminders will follow the "
+                    "new date.",
+                )
+                return redirect(opening)
+        return self.render_to_response(self.get_context_data(form=form))
 
 
 class OpeningCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):

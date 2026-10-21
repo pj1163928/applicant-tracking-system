@@ -40,8 +40,10 @@ Plain pytest fixtures, no factory libraries. The root `conftest.py` provides:
 App-only fixtures worth knowing: `applications/tests/conftest.py` (candidates, sources,
 openings, and `apply` to record through the service), `candidates/tests/conftest.py`
 (`kai`, and `application_at(candidate, opening, stage)` for an application at any stage),
-`openings/tests/conftest.py` (`make_candidate`, `application_at`, and `close_directly(opening,
-by)`, which closes with direct writes so cancel tests don't depend on `close_opening`) and
+`openings/tests/conftest.py` (`make_candidate`, `application_at`, `close_directly(opening,
+by)`, which closes with direct writes so cancel tests don't depend on `close_opening`, and
+`grace_directly(opening, by=, ends=, set_on=, action=)`, which sets a grace period the same way
+and emails nobody) and
 `notifications/tests/conftest.py` (`application`).
 
 An autouse `fast_password_hashing` fixture switches every test to Django's MD5

@@ -25,8 +25,16 @@ class JobOpeningAdmin(admin.ModelAdmin):
     list_display = ["title", "department", "status", "designated_authority", "updated_at"]
     list_filter = ["status", "department"]
     search_fields = ["title", "department", "location"]
-    # Closing goes through the app's Close action, which writes the "closed" event.
-    readonly_fields = ["status", "created_at", "updated_at"]
+    # Closing and grace periods go through the app's actions, which write their events.
+    readonly_fields = [
+        "status",
+        "grace_period_ends",
+        "grace_expiry_action",
+        "grace_period_set_on",
+        "grace_expired_on",
+        "created_at",
+        "updated_at",
+    ]
     inlines = [OpeningEventInline]
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):

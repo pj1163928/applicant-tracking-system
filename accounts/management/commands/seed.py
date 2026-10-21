@@ -19,7 +19,12 @@ from applications.stages import Stage
 from candidates.models import Candidate, Source
 from candidates.services import archive_candidate
 from openings.models import JobOpening, OpeningSkill, Skill
-from openings.services import cancel_remaining_applications, close_opening, find_or_create_skill
+from openings.services import (
+    cancel_remaining_applications,
+    close_opening,
+    find_or_create_skill,
+    set_grace_period,
+)
 
 # Development-only password shared by every seeded account.
 SEED_PASSWORD = "demo-pass-123"
@@ -102,7 +107,7 @@ class SeedOpening:
 
 # Phase 4. Openings split across three designated authorities, so the manager's
 # "My openings" differs from "All". One has no location. Every opening starts open;
-# Phase 10 closes three of them through close_opening() (SEED_CLOSURES).
+# Phases 10 and 11 close four of them through close_opening() (SEED_CLOSURES).
 SEED_OPENINGS: tuple[SeedOpening, ...] = (
     SeedOpening(
         "Backend Developer",
@@ -307,26 +312,38 @@ class SeedClosure:
     by: str  # a seeded username, who closes it
     note: str
     cancel_by: str | None = None  # a seeded username who then cancels its remaining applications
+    grace_days: int | None = None  # or gives them a grace period of this many days from today,
+    grace_action: str = ""  # ending in this JobOpening.GraceExpiryAction, set by ``by``
 
 
 # Phase 10. Closed through close_opening() once every seeded move is made, so each gets
 # its "closed" event. Only an opening seed has just created is closed, so a re-run never
 # closes one again. UX Researcher's applicants are cancelled (two logged emails);
 # QA Analyst still has Ann at Applied, so it waits in the manager's Needs attention.
+# Phase 11: the recruiter, its authority, gives Data Engineer's applicant (Dev, at Applied)
+# a 4-day flag-overdue grace period from the day seed runs, so `process_grace_periods
+# --today` can show the 3-day reminder (day 1), the 1-day one (day 3) and the end (day 4).
 SEED_CLOSURES: tuple[SeedClosure, ...] = (
     SeedClosure(
         "UX Researcher", "manager", "Research budget moved to next year.", cancel_by="manager"
     ),
     SeedClosure("Support Specialist", "recruiter", "Filled by an internal transfer."),
     SeedClosure("QA Analyst", "recruiter", "Paused until the new test lead starts."),
+    SeedClosure(
+        "Data Engineer",
+        "recruiter",
+        "Warehouse project paused for the quarter.",
+        grace_days=4,
+        grace_action=JobOpening.GraceExpiryAction.FLAG_OVERDUE,
+    ),
 )
 
 
 class Command(BaseCommand):
     help = (
         "Create one demo user per role, plus sample candidates (one archived), sources, "
-        "openings with skills (three of them closed), and applications, some moved along "
-        "the pipeline."
+        "openings with skills (four of them closed, one in a grace period), and applications, "
+        "some moved along the pipeline."
     )
 
     @transaction.atomic
@@ -579,9 +596,11 @@ def seed_closure(spec: SeedClosure, *, just_created: bool) -> str:
 
     An opening from an earlier run is left as it is (CHECKED), open or closed,
     because staff may have closed it, or (later) reopened it, on purpose. The
-    close goes through ``close_opening()``, and any cancel through
-    ``cancel_remaining_applications()``, so both write their events and the
-    cancel emails each candidate once.
+    close goes through ``close_opening()``, any cancel through
+    ``cancel_remaining_applications()`` and any grace period through
+    ``set_grace_period()``, so each writes its events and emails each candidate
+    once. The grace period is set only in this run, so a re-run never sets or
+    resets one that staff have since extended.
     """
     if not just_created:
         return CHECKED
@@ -593,6 +612,13 @@ def seed_closure(spec: SeedClosure, *, just_created: bool) -> str:
             if spec.cancel_by:
                 cancel_by = User.objects.get(username=spec.cancel_by)
                 cancel_remaining_applications(opening, by=cancel_by)
+            if spec.grace_days:
+                set_grace_period(
+                    opening,
+                    days=spec.grace_days,
+                    action=spec.grace_action,
+                    by=User.objects.get(username=spec.by),
+                )
     except (ValidationError, PermissionDenied):
         return SKIPPED
     return CREATED

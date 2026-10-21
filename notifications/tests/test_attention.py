@@ -1,6 +1,7 @@
 """The Needs attention panel and its navigation badge."""
 
 import re
+from datetime import date
 from html import unescape
 
 import pytest
@@ -188,3 +189,43 @@ def test_anonymous_users_are_sent_to_log_in(client):
 
     assert response.status_code == 302
     assert response.url.startswith(reverse("accounts:login"))
+
+
+def in_grace_period(opening, *, ended: bool) -> JobOpening:
+    """Give ``opening`` a flag-overdue grace period, ended (overdue) or still running."""
+    JobOpening.objects.filter(pk=opening.pk).update(
+        grace_period_ends=date(2026, 11, 10),
+        grace_expiry_action=JobOpening.GraceExpiryAction.FLAG_OVERDUE,
+        grace_period_set_on=date(2026, 11, 3),
+        grace_expired_on=date(2026, 11, 10) if ended else None,
+    )
+    return JobOpening.objects.get(pk=opening.pk)
+
+
+def test_an_opening_in_a_running_grace_period_drops_off_the_panel_and_the_badge(
+    hiring_manager, closures
+):
+    in_grace_period(closures["hals"], ended=False)
+
+    assert titles(closures_awaiting_decision(hiring_manager)) == [("Support Specialist", False)]
+    assert attention_count(hiring_manager) == 0
+
+
+def test_an_overdue_opening_comes_back_with_an_overdue_badge_and_counts(
+    client, hiring_manager, closures
+):
+    in_grace_period(closures["hals"], ended=True)
+    client.force_login(hiring_manager)
+
+    response = client.get(ATTENTION_URL)
+
+    assert titles(closures_awaiting_decision(hiring_manager)) == [
+        ("Backend Developer", True),
+        ("Support Specialist", False),
+    ]
+    assert attention_count(hiring_manager) == 1
+    html = page(response)
+    yours = html[: html.index('data-testid="attention-others"')]
+    assert 'data-testid="attention-overdue"' in yours
+    assert "Its grace period ended Nov 10, 2026." in text(response)
+    assert html.count('data-testid="attention-overdue"') == 1

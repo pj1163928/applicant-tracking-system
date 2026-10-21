@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth.models import Group, User
 from django.core.management import call_command
+from django.utils import timezone
 
 from accounts.management.commands.seed import (
     SEED_APPLICATIONS,
@@ -23,6 +26,7 @@ from candidates.services import unarchive_candidate
 from notifications.attention import closures_awaiting_decision
 from notifications.models import CandidateMessage
 from openings.models import JobOpening, OpeningEvent, OpeningSkill, Skill
+from openings.services import extend_grace_period
 
 pytestmark = pytest.mark.django_db
 
@@ -369,7 +373,7 @@ def test_rerunning_seed_keeps_staff_changes_to_skills():
     assert Skill.objects.count() == len(SEED_SKILLS) + 1  # Docker, and no second SQL
 
 
-def test_seed_closes_three_openings_through_the_closure_flow(
+def test_seed_closes_four_openings_through_the_closure_flow(
     django_capture_on_commit_callbacks, mailoutbox
 ):
     with django_capture_on_commit_callbacks(execute=True):
@@ -389,23 +393,57 @@ def test_seed_closes_three_openings_through_the_closure_flow(
             "cause", "note", "changed_by__username"
         )
     ) == {(StageChange.Cause.CLOSURE, "Position closed.", "manager")}
-    assert sorted(CandidateMessage.objects.values_list("candidate__email", flat=True)) == [
-        "dev.sharma@example.com",
-        "jade.okafor@example.com",
+    assert sorted(CandidateMessage.objects.values_list("candidate__email", "kind")) == [
+        ("dev.sharma@example.com", CandidateMessage.Kind.CANCELLED),
+        ("dev.sharma@example.com", CandidateMessage.Kind.GRACE_PERIOD_SET),
+        ("jade.okafor@example.com", CandidateMessage.Kind.CANCELLED),
     ]
     assert OpeningEvent.objects.filter(kind=OpeningEvent.Kind.APPLICATIONS_CANCELLED).count() == 1
 
-    # QA Analyst still has Ann in progress, so it waits on the manager.
+    # Data Engineer's authority, the recruiter, gave Dev a 4-day flag-overdue grace period.
+    data = JobOpening.objects.get(title="Data Engineer")
+    today = timezone.localdate()
+    assert (
+        data.grace_period_ends,
+        data.grace_expiry_action,
+        data.grace_period_set_on,
+        data.grace_expired_on,
+    ) == (today + timedelta(days=4), JobOpening.GraceExpiryAction.FLAG_OVERDUE, today, None)
+    assert data.events.filter(
+        kind=OpeningEvent.Kind.GRACE_PERIOD_SET, by__username="recruiter"
+    ).exists()
+
+    # QA Analyst still has Ann in progress, so it waits on the manager. Data Engineer is in
+    # its grace period, so it isn't waiting on anyone yet.
     manager = User.objects.get(username="manager")
     items = closures_awaiting_decision(manager)
     assert [(i.opening.title, i.assigned_to_you) for i in items] == [("QA Analyst", True)]
-    # Two emails to candidates, and one to the manager for each closure with applicants.
+    assert closures_awaiting_decision(User.objects.get(username="recruiter")) == []
+    # Three emails to candidates, and one to the authority for each closure with applicants.
     assert sorted(m.to[0] for m in mailoutbox) == [
+        "dev.sharma@example.com",
         "dev.sharma@example.com",
         "jade.okafor@example.com",
         "manager@example.com",
         "manager@example.com",
+        "recruiter@example.com",
     ]
+
+
+def test_rerunning_seed_keeps_a_grace_period_staff_extended():
+    call_command("seed")
+    data = JobOpening.objects.get(title="Data Engineer")
+    recruiter = User.objects.get(username="recruiter")
+    extend_grace_period(
+        data, ends=data.grace_period_ends + timedelta(days=5), note="More time.", by=recruiter
+    )
+    extended = JobOpening.objects.get(pk=data.pk).grace_period_ends
+    before = (OpeningEvent.objects.count(), CandidateMessage.objects.count())
+
+    call_command("seed")
+
+    assert JobOpening.objects.get(pk=data.pk).grace_period_ends == extended
+    assert (OpeningEvent.objects.count(), CandidateMessage.objects.count()) == before
 
 
 def test_rerunning_seed_never_recloses_an_opening_staff_reopened():

@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -80,3 +82,63 @@ def test_open_first_lists_open_openings_before_closed_ones_then_by_title(
     titles = [o.title for o in JobOpening.objects.open_first()]
 
     assert titles == ["Backend Developer", "Zoo Keeper", "Analyst"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        # Only some of the grace period filled in.
+        {"grace_period_ends": date(2026, 11, 10)},
+        {"grace_period_ends": date(2026, 11, 10), "grace_expiry_action": "flag_overdue"},
+        {"grace_expiry_action": "auto_cancel", "grace_period_set_on": date(2026, 11, 3)},
+        # An unknown action.
+        {
+            "grace_period_ends": date(2026, 11, 10),
+            "grace_expiry_action": "delete_everyone",
+            "grace_period_set_on": date(2026, 11, 3),
+        },
+        # Ended without ever having a grace period.
+        {"grace_expired_on": date(2026, 11, 10)},
+    ],
+)
+def test_the_database_keeps_the_grace_period_fields_in_step(hiring_manager, fields):
+    with pytest.raises(IntegrityError):
+        JobOpening.objects.bulk_create(
+            [
+                JobOpening(
+                    title="QA",
+                    department="Eng",
+                    description="x",
+                    designated_authority=hiring_manager,
+                    **fields,
+                )
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    ("expired_on", "action", "running", "overdue", "auto_cancelled"),
+    [
+        (None, "flag_overdue", True, False, False),
+        (date(2026, 11, 10), "flag_overdue", False, True, False),
+        (date(2026, 11, 10), "auto_cancel", False, False, True),
+    ],
+)
+def test_the_grace_period_states(
+    make_opening, hiring_manager, expired_on, action, running, overdue, auto_cancelled
+):
+    opening = make_opening(
+        "QA Analyst",
+        hiring_manager,
+        status=JobOpening.Status.CLOSED,
+        grace_period_ends=date(2026, 11, 10),
+        grace_expiry_action=action,
+        grace_period_set_on=date(2026, 11, 3),
+        grace_expired_on=expired_on,
+    )
+
+    assert (opening.grace_period_running, opening.is_overdue, opening.auto_cancelled) == (
+        running,
+        overdue,
+        auto_cancelled,
+    )

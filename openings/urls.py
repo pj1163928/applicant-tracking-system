@@ -2,6 +2,8 @@ from django.urls import path
 
 from applications.views import PipelineBoardView
 from openings.views import (
+    GracePeriodExtendView,
+    GracePeriodSetView,
     OpeningCancelRemainingView,
     OpeningCloseView,
     OpeningCreateView,
@@ -24,6 +26,12 @@ urlpatterns = [
         "<int:pk>/cancel-remaining/",
         OpeningCancelRemainingView.as_view(),
         name="cancel_remaining",
+    ),
+    path("<int:pk>/grace-period/", GracePeriodSetView.as_view(), name="grace_period"),
+    path(
+        "<int:pk>/grace-period/extend/",
+        GracePeriodExtendView.as_view(),
+        name="extend_grace_period",
     ),
     path("<int:pk>/skills/add/", OpeningSkillAttachView.as_view(), name="skill_attach"),
     path(

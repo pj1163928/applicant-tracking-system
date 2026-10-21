@@ -87,6 +87,13 @@ class OpeningStatus(models.TextChoices):
     CLOSED = "closed", "Closed"
 
 
+class GraceExpiryAction(models.TextChoices):
+    """What happens when a grace period ends. Also reachable as ``JobOpening.GraceExpiryAction``."""
+
+    AUTO_CANCEL = "auto_cancel", "Cancel the remaining applications"
+    FLAG_OVERDUE = "flag_overdue", "Flag the opening as overdue"
+
+
 class JobOpeningQuerySet(models.QuerySet):
     def in_scope(self, scope: Scope, user) -> "JobOpeningQuerySet":
         """Return the openings a list scope shows: ``MINE`` is the user's own, ``ALL`` is every one.
@@ -109,14 +116,27 @@ class JobOpeningQuerySet(models.QuerySet):
         )
 
     def awaiting_closure_decision(self) -> "JobOpeningQuerySet":
-        """Return the closed openings that still have active applications, with ``active_count``.
+        """Return the closed openings with active applications and no grace period running.
 
-        Someone allowed by ``accounts.permissions.can_decide_closure`` must
-        decide what happens to those applicants; until then the opening shows
-        in the Needs attention panel.
+        Each is annotated with ``active_count``. Someone allowed by
+        ``accounts.permissions.can_decide_closure`` must decide what happens to
+        those applicants; until then the opening shows in the Needs attention
+        panel. That includes overdue openings (a grace period that ended), but
+        not ones whose grace period is still running.
         """
         return (
-            self.filter(status=OpeningStatus.CLOSED).with_active_count().filter(active_count__gt=0)
+            self.filter(status=OpeningStatus.CLOSED)
+            .filter(Q(grace_period_ends__isnull=True) | Q(grace_expired_on__isnull=False))
+            .with_active_count()
+            .filter(active_count__gt=0)
+        )
+
+    def with_grace_period_running(self) -> "JobOpeningQuerySet":
+        """Return the closed openings whose grace period ``process_grace_periods`` hasn't ended."""
+        return self.filter(
+            status=OpeningStatus.CLOSED,
+            grace_period_ends__isnull=False,
+            grace_expired_on__isnull=True,
         )
 
     def open_first(self) -> "JobOpeningQuerySet":
@@ -139,6 +159,7 @@ class JobOpening(models.Model):
     """
 
     Status = OpeningStatus
+    GraceExpiryAction = GraceExpiryAction
 
     title = models.CharField(max_length=150)
     department = models.CharField(max_length=100)
@@ -151,6 +172,15 @@ class JobOpening(models.Model):
         related_name="authority_openings",
     )
     skills = models.ManyToManyField(Skill, through="OpeningSkill", related_name="openings")
+    # A closed opening's grace period, in calendar days of the project time zone. Set and
+    # extended only through openings.services; process_grace_periods sets grace_expired_on
+    # when it handles the end, which is what makes the end-of-period action run only once.
+    grace_period_ends = models.DateField(null=True, blank=True)
+    grace_expiry_action = models.CharField(
+        max_length=20, choices=GraceExpiryAction.choices, blank=True
+    )
+    grace_period_set_on = models.DateField(null=True, blank=True)
+    grace_expired_on = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -163,6 +193,24 @@ class JobOpening(models.Model):
                 condition=models.Q(status__in=OpeningStatus.values),
                 name="opening_status_valid",
             ),
+            # The grace period's end, action and start are filled in or empty together,
+            # and it can only have ended if there is one.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        grace_period_ends__isnull=True,
+                        grace_expiry_action="",
+                        grace_period_set_on__isnull=True,
+                        grace_expired_on__isnull=True,
+                    )
+                    | models.Q(
+                        grace_period_ends__isnull=False,
+                        grace_expiry_action__in=GraceExpiryAction.values,
+                        grace_period_set_on__isnull=False,
+                    )
+                ),
+                name="opening_grace_period_complete",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -174,6 +222,31 @@ class JobOpening(models.Model):
     @property
     def is_open(self) -> bool:
         return self.status == self.Status.OPEN
+
+    @property
+    def has_grace_period(self) -> bool:
+        return self.grace_period_ends is not None
+
+    @property
+    def grace_period_running(self) -> bool:
+        """True while a grace period is set and ``process_grace_periods`` hasn't ended it."""
+        return self.has_grace_period and self.grace_expired_on is None
+
+    @property
+    def is_overdue(self) -> bool:
+        """True once a flag-overdue grace period has ended (until it is extended)."""
+        return (
+            self.grace_expired_on is not None
+            and self.grace_expiry_action == GraceExpiryAction.FLAG_OVERDUE
+        )
+
+    @property
+    def auto_cancelled(self) -> bool:
+        """True once an auto-cancel grace period has ended. It can't be extended after that."""
+        return (
+            self.grace_expired_on is not None
+            and self.grace_expiry_action == GraceExpiryAction.AUTO_CANCEL
+        )
 
 
 class OpeningSkill(models.Model):
@@ -196,6 +269,9 @@ class OpeningEventKind(models.TextChoices):
 
     CLOSED = "closed", "Closed"
     APPLICATIONS_CANCELLED = "applications_cancelled", "Remaining applications cancelled"
+    GRACE_PERIOD_SET = "grace_period_set", "Grace period set"
+    GRACE_PERIOD_EXTENDED = "grace_period_extended", "Grace period extended"
+    GRACE_PERIOD_EXPIRED = "grace_period_expired", "Grace period ended"
 
 
 class OpeningEvent(models.Model):

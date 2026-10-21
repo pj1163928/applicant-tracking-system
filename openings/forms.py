@@ -5,7 +5,7 @@ from accounts.permissions import eligible_authorities
 from accounts.roles import role_label
 from config.forms import DaisyUIFormMixin
 from openings.models import JobOpening
-from openings.services import SKILL_NAME_MAX_LENGTH
+from openings.services import GRACE_DAYS_MAX, GRACE_DAYS_MIN, SKILL_NAME_MAX_LENGTH
 
 
 class AuthorityChoiceField(forms.ModelChoiceField):
@@ -106,4 +106,62 @@ class CloseOpeningForm(DaisyUIFormMixin, forms.Form):
             attrs={"rows": 3, "placeholder": "For example: Budget moved to next year."}
         ),
         help_text="Shown in the opening's history, and in the email to the designated authority.",
+    )
+
+
+class GracePeriodForm(DaisyUIFormMixin, forms.Form):
+    """Give a closed opening's remaining applicants a grace period: how long, and what then.
+
+    Only the typing is checked here; ``openings.services.set_grace_period()``
+    applies the rules.
+    """
+
+    CLASSES = {"action": ("radio radio-primary radio-sm", "radio-error")}
+
+    days = forms.IntegerField(
+        label="Days",
+        min_value=GRACE_DAYS_MIN,
+        max_value=GRACE_DAYS_MAX,
+        initial=7,
+        error_messages={
+            "required": "Say how many days the applicants get.",
+            "min_value": f"A grace period is at least {GRACE_DAYS_MIN} day.",
+            "max_value": f"A grace period is at most {GRACE_DAYS_MAX} days.",
+        },
+        widget=forms.NumberInput(attrs={"inputmode": "numeric"}),
+        help_text=f"{GRACE_DAYS_MIN} to {GRACE_DAYS_MAX}. It ends that many days from today.",
+    )
+    action = forms.ChoiceField(
+        label="When it ends",
+        choices=JobOpening.GraceExpiryAction.choices,
+        widget=forms.RadioSelect,
+        error_messages={"required": "Choose what happens when the grace period ends."},
+    )
+
+
+class ExtendGracePeriodForm(DaisyUIFormMixin, forms.Form):
+    """Move a grace period's end date, with a note saying why.
+
+    Only the typing is checked here; ``openings.services.extend_grace_period()``
+    checks the date against the current end and today.
+    """
+
+    CLASSES = {"note": ("textarea w-full", "textarea-error")}
+
+    ends = forms.DateField(
+        label="New end date",
+        error_messages={
+            "required": "Pick the new end date.",
+            "invalid": "Pick the new end date.",
+        },
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+    note = forms.CharField(
+        label="Why it's being extended",
+        max_length=500,
+        error_messages={"required": "Say why the grace period is being extended."},
+        widget=forms.Textarea(
+            attrs={"rows": 3, "placeholder": "For example: Final interviews moved to next week."}
+        ),
+        help_text="Shown in the opening's history.",
     )

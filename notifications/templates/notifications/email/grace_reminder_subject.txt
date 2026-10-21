@@ -1,0 +1,1 @@
+{{ days_left }} day{{ days_left|pluralize }} left on your application for {{ opening.title }}

@@ -1,0 +1,13 @@
+{% autoescape off %}Hello {{ candidate.first_name }},
+
+A reminder about your application for the {{ opening.title }}
+position: the time to complete the process ends on
+{{ ends|date:"F j, Y" }}, {{ days_left }} day{{ days_left|pluralize }} from now. If it isn't
+complete before then, your application {% if auto_cancel %}will be closed{% else %}may be closed{% endif %}.
+
+There's nothing you need to do. Our team will be in touch to
+complete the next step.
+
+Best wishes,
+The hiring team
+{% endautoescape %}

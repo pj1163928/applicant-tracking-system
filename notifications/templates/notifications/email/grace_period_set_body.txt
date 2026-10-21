@@ -1,0 +1,15 @@
+{% autoescape off %}Hello {{ candidate.first_name }},
+
+Thank you for your interest in the {{ opening.title }} position.
+The position has closed to new applicants, but your application
+is still in progress.
+
+We have until {{ ends|date:"F j, Y" }} to complete the process. If
+it isn't complete before then, your application {% if auto_cancel %}will be closed{% else %}may be closed{% endif %}.
+
+There's nothing you need to do. Our team will be in touch to
+complete the next step.
+
+Best wishes,
+The hiring team
+{% endautoescape %}

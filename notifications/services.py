@@ -51,15 +51,33 @@ def notify_authority_of_closure(
     return True
 
 
+def notify_authority_of_overdue(opening: JobOpening, *, active_count: int) -> bool:
+    """Email ``opening``'s designated authority that its flag-overdue grace period has ended.
+
+    Sent only while someone is still in progress: returns False, and sends
+    nothing, if ``active_count`` is 0 or the authority has no email address.
+    """
+    authority = opening.designated_authority
+    if not active_count or not authority.email:
+        return False
+    subject, body = render_email(
+        "grace_period_overdue",
+        {"opening": opening, "authority": authority, "active_count": active_count},
+    )
+    send_after_commit(subject, body, authority.email)
+    return True
+
+
 def send_candidate_message(
-    application: Application, kind: str, *, occasion: str
+    application: Application, kind: str, *, occasion: str, context: dict | None = None
 ) -> CandidateMessage | None:
     """Build, log and send one email to ``application``'s candidate, unless it was already sent.
 
     A message is identified by (application, ``kind``, ``occasion``); the
     occasion names what it is about, such as one closure of the opening. The
     subject and body come from the ``notifications/email/<kind>_*.txt``
-    templates. The ``CandidateMessage`` row is written in the caller's
+    templates, which also get ``context`` (a reminder's days left, say). The
+    ``CandidateMessage`` row is written in the caller's
     transaction and the email goes out once it commits, so a rolled-back
     change sends nothing. Returns the new row, or None if this message was
     already sent; the database's unique constraint backs that up when two
@@ -70,7 +88,9 @@ def send_candidate_message(
         return None
     candidate = application.candidate
     subject, body = render_email(
-        kind, {"application": application, "candidate": candidate, "opening": application.opening}
+        kind,
+        {"application": application, "candidate": candidate, "opening": application.opening}
+        | (context or {}),
     )
     try:
         with transaction.atomic():

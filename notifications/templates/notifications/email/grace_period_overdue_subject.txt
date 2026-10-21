@@ -1,0 +1,1 @@
+{{ opening.title }} is overdue: {{ active_count }} applicant{{ active_count|pluralize }} still in progress
