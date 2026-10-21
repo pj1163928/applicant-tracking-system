@@ -287,12 +287,13 @@ Recruiters and Admins archive and unarchive candidates.
 
 ### Acceptance criteria
 
-- [ ] Archiving sets `is_archived` and `archived_at`, and is refused while the candidate has any active application.
-- [ ] Unarchiving reverses it.
-- [ ] Archived candidates are hidden by default and shown with "Show archived".
-- [ ] New applications for archived candidates are refused.
-- [ ] Archived candidates' existing applications still show on boards.
+- [x] Archiving sets `is_archived` and `archived_at`, and is refused while the candidate has any active application.
+- [x] Unarchiving reverses it.
+- [x] Archived candidates are hidden by default and shown with "Show archived".
+- [x] New applications for archived candidates are refused.
+- [x] Archived candidates' existing applications still show on boards.
 - [ ] Only Admins can permanently delete. The confirmation page lists the applications, stage history and messages that will be removed.
+  - *Built except messages:* Admin-only delete and the confirmation page's applications and stage history are done and tested. `CandidateMessage` arrives in Phase 10, so its messages go on the page then (`candidates.services.DeletionSummary`).
 
 ### TDD
 
@@ -325,6 +326,7 @@ Anyone who can edit an opening can close it.
 - [ ] Cancel now moves every active application to Rejected (cause = closure, note "Position closed."), using `move_application`, in one transaction.
 - [ ] Each cancelled candidate gets exactly one cancellation email, logged as a CandidateMessage, and running the action again doesn't resend it.
 - [ ] The opening page lists its OpeningEvents.
+- [ ] The permanent-delete confirmation page (Phase 9) also lists the candidate's messages that will be removed.
 
 ### TDD
 

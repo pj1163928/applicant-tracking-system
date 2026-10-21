@@ -29,6 +29,7 @@ from applications.stages import (
 from candidates.models import Candidate, Source
 from openings.models import JobOpening
 
+ARCHIVED_CANDIDATE = "archived_candidate"
 CLOSED_OPENING = "closed_opening"
 DUPLICATE_APPLICATION = "duplicate_application"
 RETIRED_SOURCE = "retired_source"
@@ -38,8 +39,16 @@ def application_refusal(candidate: Candidate, opening: JobOpening) -> Validation
     """Return why ``candidate`` can't apply for ``opening`` now, or None if they can.
 
     The form shows this error and ``record_application()`` raises it, so the
-    rule lives in one place. Later phases add more reasons (archived candidates).
+    rule lives in one place. Archived candidates can't apply for anything,
+    closed openings take no new applications, and nobody applies twice.
+    Judges ``candidate`` as given, so ``record_application()`` passes the stored row.
     """
+    if candidate.is_archived:
+        return ValidationError(
+            f"{candidate.full_name} is archived, so they can't apply for anything. "
+            "Unarchive them first.",
+            code=ARCHIVED_CANDIDATE,
+        )
     if not opening.is_open:
         return ValidationError(
             f"{opening.title} is closed, so it can't take new applications.",
@@ -54,7 +63,10 @@ def openings_open_to(candidate: Candidate) -> QuerySet[JobOpening]:
     """Return the openings ``candidate`` could apply for now: open, and not applied for yet.
 
     Pages show the "Record application" action only when this is not empty.
+    An archived candidate can't apply for anything, so gets none.
     """
+    if candidate.is_archived:
+        return JobOpening.objects.none()
     return JobOpening.objects.accepting_applications().exclude(applications__candidate=candidate)
 
 
@@ -87,11 +99,13 @@ def record_application(
     is kept. ``referred_by`` is kept only for Referral sources.
 
     Raises ``PermissionDenied`` unless ``by`` may manage applications, and
-    ``ValidationError`` if the opening is closed, the candidate has already
-    applied for it, or the source is retired.
+    ``ValidationError`` if the candidate is archived, the opening is closed,
+    the candidate has already applied for it, or the source is retired.
     """
     if not can_manage_applications(by):
         raise PermissionDenied("Only Recruiters and Admins can record applications.")
+    # Lock and re-read the candidate, so one archived since the caller loaded it is refused.
+    candidate = Candidate.objects.select_for_update().get(pk=candidate.pk)
     refusal = application_refusal(candidate, opening)
     if refusal is not None:
         raise refusal
@@ -137,7 +151,8 @@ def move_refusal(
 
     Checks, in order: that ``by`` may move stages at all; that the application
     is still at ``expected_stage`` (the stage the user's card showed), if one is
-    given; the transitions table; and ``can_make_offer`` for Offer and Hired.
+    given; that the candidate isn't archived; the transitions table; and
+    ``can_make_offer`` for Offer and Hired.
     The note is not checked here: the board asks for it after this passes, and
     ``move_application()`` refuses a missing one. Judges ``application.stage``
     as given, so ``move_application()`` passes the stored row.
@@ -150,6 +165,12 @@ def move_refusal(
             f"{name} has moved to {Stage(current).label} since this board loaded, "
             "so that move wasn't made. The board now shows where they are.",
             code=STALE_STAGE,
+        )
+    if application.candidate.is_archived:
+        # An archived candidate has no active applications; reopening one would undo that.
+        return ValidationError(
+            f"{name} is archived, so their applications can't be moved. Unarchive them first.",
+            code=ARCHIVED_CANDIDATE,
         )
     if not can_move(current, to_stage):
         return ValidationError(illegal_move_message(name, current, to_stage), code=ILLEGAL_MOVE)
@@ -201,7 +222,7 @@ def move_application(
 
     Raises ``PermissionDenied`` if ``by`` may not move stages, or may not move
     into Offer or Hired here, and ``ValidationError`` (code ``STALE_STAGE``,
-    ``ILLEGAL_MOVE`` or ``NOTE_REQUIRED``) for the rest. Nothing is written
+    ``ARCHIVED_CANDIDATE``, ``ILLEGAL_MOVE`` or ``NOTE_REQUIRED``) for the rest. Nothing is written
     when it refuses.
     """
     stored = (

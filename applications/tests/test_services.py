@@ -8,6 +8,7 @@ from django.utils import timezone
 from applications.models import Application, StageChange
 from applications.services import prefill_source, record_application
 from applications.stages import Stage
+from candidates.models import Candidate
 
 pytestmark = pytest.mark.django_db
 
@@ -22,6 +23,25 @@ def test_a_closed_opening_takes_no_new_applications(ann, closed_opening, indeed,
 
     assert refused.value.messages == ["UX Researcher is closed, so it can't take new applications."]
     assert counts() == (0, 0)
+
+
+def test_an_archived_candidate_takes_no_new_applications_until_unarchived(
+    ann, backend, indeed, recruiter
+):
+    # Archived in the database behind the caller's back: `ann` is now a stale copy.
+    Candidate.objects.filter(pk=ann.pk).update(is_archived=True, archived_at=timezone.now())
+
+    with pytest.raises(ValidationError) as refused:
+        record_application(candidate=ann, opening=backend, source=indeed, by=recruiter)
+
+    assert refused.value.messages == [
+        "Ann Lee is archived, so they can't apply for anything. Unarchive them first."
+    ]
+    assert counts() == (0, 0)
+
+    Candidate.objects.filter(pk=ann.pk).update(is_archived=False, archived_at=None)
+    record_application(candidate=ann, opening=backend, source=indeed, by=recruiter)
+    assert counts() == (1, 1)
 
 
 def test_recording_an_application_writes_it_at_applied_with_exactly_one_history_row(

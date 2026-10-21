@@ -73,6 +73,9 @@ def board_columns(
     the columns a move touched. Users who may not move stages (Interviewers)
     get columns with no Move targets. Cards are newest first (the most recently
     moved or recorded at the top), so a folded column shows its latest arrivals.
+    Each card's ``movable`` is False when it offers no moves at all: its column
+    has no Move targets for this user, or its candidate is archived
+    (``move_refusal()`` refuses those moves on the server too).
     """
     wanted = [stage for stage in Stage if stages is None or stage in set(stages)]
     may_move = can_move_applications(user)
@@ -83,13 +86,20 @@ def board_columns(
         .select_related("candidate", "source")
         .order_by("-updated_at", "-pk")
     )
+    targets = {
+        stage: move_targets(stage, may_offer=may_offer) if may_move else [] for stage in wanted
+    }
     for application in applications:
+        # An archived candidate's card stays on the board, but no move is offered for it.
+        application.movable = bool(targets[application.stage]) and not (
+            application.candidate.is_archived
+        )
         cards[application.stage].append(application)
     return [
         Column(
             stage=stage,
             applications=cards[stage],
-            targets=move_targets(stage, may_offer=may_offer) if may_move else [],
+            targets=targets[stage],
             offer_withheld=may_move and withholds_offer_targets(stage, may_offer=may_offer),
         )
         for stage in wanted

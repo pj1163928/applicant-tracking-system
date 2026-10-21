@@ -28,6 +28,97 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-20 — Applicant Tracking System: Phase 9/14, Candidate lifecycle
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 9`.
+2. Looks good also ensure that move_refusal blocks archived candidates on the server side, not just hiddent on the board.
+3. looks good move to next
+4. Looks good continue
+5. Looks good move to next
+
+### Summary
+
+- **Outcome:** Candidate lifecycle: archive, unarchive and permanent delete.
+  - **Archive and unarchive.** Recruiters and Admins get Archive and Unarchive buttons on a candidate's page.
+    - Archiving is refused while any application is at Applied, Screening, Interview, Final Review or Offer. The page hides the button and says why.
+    - An archived candidate's page shows an "Archived on …" banner and can't record a new application.
+  - **The list.** Archived candidates are hidden by default. The count says how many are hidden, and a "Show archived" toggle (HTMX, combined with the search) lists them with an "Archived" badge. They're always reachable by URL.
+  - **No new applications.** They're refused in four places:
+    - `application_refusal` (shared by the form and `record_application`, which now re-reads the candidate under a lock);
+    - the form's candidate dropdown;
+    - the create page started with `?candidate=`;
+    - the "Record application" action.
+  - **Boards and opening pages** keep an archived candidate's cards, with an "Archived" badge.
+    - Their cards have no Move menu and can't be dragged, and staff who could move them see "Unarchive Kai to move this card."
+    - **Server-side refusal (prompt 2):** `move_refusal` itself refuses any move for an archived candidate, so a hand-made POST gets a 400 with "… is archived, so their applications can't be moved. Unarchive them first."
+  - **Permanent delete (Admins only).** A "Delete permanently" area on the candidate page links to `/candidates/<pk>/delete/`.
+    - The confirmation page lists each application with its stage, source and full stage history, plus counts.
+    - Confirming deletes everything in one transaction and returns to the list, with a message saying what was removed.
+    - Everyone else gets a 403 for GET and POST, and the Django admin lets only Admins delete.
+  - **Seed:** a new candidate, Kai Moreno, withdraws from Backend Developer and is then archived.
+  - **Checks:** 657 tests pass (64 new). `ruff check` and `ruff format` are clean. One migration (`candidates/0003_candidate_archiving`). The dev database was migrated and seeded twice; the second run changed nothing.
+  - **Criteria:** five of six are ticked. The delete criterion stays unticked until Phase 10 adds candidate messages to the confirmation page.
+- **Changes:**
+  - `candidates/models.py`:
+    - `is_archived` and `archived_at`, and a `candidate_archived_has_date` check constraint that keeps them in step;
+    - `CandidateQuerySet.unarchived()`.
+  - `candidates/migrations/0003_candidate_archiving.py`: the two fields and the constraint.
+  - `candidates/services.py` (new): `archive_refusal`, `archive_candidate`, `unarchive_candidate`, `DeletionSummary`, `deletion_summary` and `delete_candidate`. Each one checks its permission on the server.
+  - `accounts/permissions.py`:
+    - `CANDIDATE_DELETER_ROLES = ()` and `can_delete_candidates` (active Admins only; `is_staff` never counts);
+    - `can_manage_candidates` now also covers archiving.
+  - `accounts/templatetags/accounts_tags.py`: the `can_delete_candidates` filter.
+  - `applications/services.py`:
+    - the `ARCHIVED_CANDIDATE` reason, in `application_refusal` and `move_refusal`;
+    - `openings_open_to` returns nothing for an archived candidate;
+    - `record_application` locks and re-reads the candidate.
+  - `applications/forms.py`: the candidate dropdown uses `Candidate.objects.unarchived()`, with its own invalid-choice message.
+  - `applications/views.py`: the create page refuses `?candidate=` for an archived candidate.
+  - `applications/board.py`: each card gets `movable` (its column has Move targets and its candidate isn't archived).
+  - `applications/templates/applications/partials/card.html`: uses `movable`, and adds the badge and the "Unarchive … to move" line.
+  - `candidates/views.py`:
+    - the list's `?archived=1` toggle and its counts;
+    - `archive_refusal` on the detail page;
+    - `CandidateArchiveView` (archive and unarchive) and `CandidateDeleteView`.
+  - `candidates/urls.py`: `archive`, `unarchive` and `delete`.
+  - Templates:
+    - `candidate_list.html` (the toggle), `partials/results.html` (counts and badges) and `candidate_detail.html` (banner, buttons, the delete area);
+    - new `candidate_confirm_delete.html` and `partials/archived_badge.html`;
+    - a badge on `openings/jobopening_detail.html`;
+    - icons `trash-2.svg` and `triangle-alert.svg`, copied from lucide-static v1.49.0.
+  - `candidates/admin.py`: the archive fields are read-only, and only Admins can delete.
+  - `accounts/management/commands/seed.py`: Kai Moreno's candidate, application and move, `SEED_ARCHIVED` and `seed_archived`.
+  - Tests:
+    - new `candidates/tests/test_services.py`, `test_lifecycle_views.py` and `conftest.py` (`kai`, `application_at`);
+    - archived cases added to `applications/tests/test_services.py`, `test_moves.py`, `test_board.py`, `test_forms.py` and `test_views.py`;
+    - `accounts/tests/test_permissions.py` and `test_seed.py`.
+  - Docs:
+    - `CLAUDE.md`: the lifecycle conventions;
+    - `docs/TESTING.md`: the new fixtures;
+    - `docs/MANUAL_CHECKS.md`: an archived-card check, and the Reopen check now names Chloe's card;
+    - `plans/applicant-tracking-system.md`: ticks, and a Phase 10 criterion for messages on the delete page.
+- **TDD:** the plan's three candidates, as approved.
+  1. **Archiving is blocked while an application is active.** One test, run for each of the eight stages. The candidate has a Rejected application plus one at the stage being tested. RED against a placeholder `archive_candidate` that did nothing.
+  2. **Archived candidates can't receive new applications.** `record_application` gets a stale copy of the candidate, who was archived in the database. It must refuse with the exact message and write nothing, then succeed once the candidate is unarchived. RED with "DID NOT RAISE".
+  3. **Permanent delete is Admin-only.** Run for six users (every role, plus an `is_staff` user with no role). Only the Admin removes the candidate, application and history; everyone else gets `PermissionDenied` and nothing changes. RED against a placeholder `delete_candidate`.
+- **Decisions:**
+  - "Active" means `ACTIVE_STAGES` (Applied through Offer); Hired, Rejected and Withdrawn never block archiving.
+  - Archiving reuses `can_manage_candidates` (the PRD matrix gives it to Admins and Recruiters). Deleting gets its own empty roles tuple, so only Admins pass.
+  - Archive and unarchive are plain POSTs that redirect with a message, since the whole page changes state.
+  - Deleting needs neither archiving first nor finished applications, as the PRD asks only for the confirmation page.
+  - Archived candidates can still be edited (to correct mistakes).
+  - Seed archives Kai only in the run that creates Kai, so a re-run never re-archives a candidate staff have unarchived.
+  - Messages can't appear on the delete page until `CandidateMessage` exists (Phase 10). That part is left open and carried into Phase 10's criteria.
+- **Deviations:**
+  - Prompt 2 confirmed the recommendation to refuse moves for archived candidates, and asked that the refusal live in `move_refusal` on the server, not only in the hidden board controls. Done, with service and endpoint tests.
+- **Sideways:**
+  - Making cards "movable" at first ignored whether the column had any Move targets, so a Hired card got a drop form. `test_a_hired_card_cant_be_dragged` caught it, and the rule now needs targets as well.
+  - My first board test looked for `data-move-targets` in the whole page, but the board's script contains that text. The test now checks the card only.
+  - A list test matched "1 archived hidden" as plain text, but those words sit inside a `<span>`. The test now strips tags first.
+  - `ruff check` flagged two unsorted import blocks (`seed.py`, `candidates/services.py`); `ruff check --fix` sorted them.
+
 ## 2026-10-20 — Applicant Tracking System: Phase 8/14, Skills on openings
 
 ### Prompts

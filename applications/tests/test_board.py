@@ -6,10 +6,12 @@ from html import unescape
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from django.utils import timezone
 
 from applications.models import Application, StageChange
 from applications.services import move_application
 from applications.stages import Stage
+from candidates.models import Candidate
 
 pytestmark = pytest.mark.django_db
 
@@ -185,6 +187,49 @@ def test_a_hired_card_has_no_move_menu(client, admin, app, backend):
 
     assert "Ann Lee" in section(html, "column-hired", "</section>")
     assert 'data-testid="move-menu"' not in html
+
+
+def archive(candidate) -> None:
+    """Archive directly, as the archive service would once nothing is active."""
+    Candidate.objects.filter(pk=candidate.pk).update(is_archived=True, archived_at=timezone.now())
+
+
+def test_an_archived_candidates_card_stays_on_the_board_without_move_controls(
+    client, recruiter, interviewer, app, backend
+):
+    walk(app, Stage.WITHDRAWN, by=recruiter)
+    archive(app.candidate)
+
+    for user in (recruiter, interviewer):
+        client.force_login(user)
+        html = page(client.get(board_url(backend)))
+        start = html.index(f'id="card-{app.pk}"')
+        card = html[start : html.index("</li>", start)]
+        assert "Ann Lee" in section(html, "column-withdrawn", "</details>")
+        assert 'data-testid="archived-badge"' in card
+        assert 'data-testid="move-menu"' not in card
+        assert "data-move-targets" not in card
+        assert "data-drop-form" not in card
+        # Only someone who could otherwise move it is told how to.
+        assert ('data-testid="archived-no-moves"' in card) == (user == recruiter)
+
+
+def test_a_reopen_posted_for_an_archived_candidate_is_refused_with_400(client, recruiter, app):
+    walk(app, Stage.REJECTED, by=recruiter)
+    archive(app.candidate)
+    client.force_login(recruiter)
+
+    response = client.post(
+        move_url(app),
+        {"to_stage": "screening", "expected_stage": "rejected", "confirmed": "on", "note": "Hm."},
+        **HTMX,
+    )
+
+    assert response.status_code == 400
+    assert "Ann Lee is archived, so their applications can't be moved. Unarchive them first." in (
+        page(response)
+    )
+    assert stored(app) == (Stage.REJECTED, 2)
 
 
 def test_each_menu_entry_carries_the_stage_its_card_shows(client, recruiter, app, backend):

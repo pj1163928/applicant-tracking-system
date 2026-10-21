@@ -2,9 +2,11 @@ import pytest
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 from django.urls import reverse
+from django.utils import timezone
 
 from applications.models import Application, StageChange
 from applications.stages import Stage
+from candidates.models import Candidate
 
 pytestmark = pytest.mark.django_db
 
@@ -155,6 +157,20 @@ def test_the_create_page_refuses_a_candidate_with_nowhere_left_to_apply(
 
     assert response.url == ann.get_absolute_url()
     assert message_texts(response) == ["There are no open openings Ann Lee hasn't applied for."]
+
+
+def test_the_create_page_refuses_to_start_from_an_archived_candidate(
+    client, recruiter, ann, backend
+):
+    Candidate.objects.filter(pk=ann.pk).update(is_archived=True, archived_at=timezone.now())
+    client.force_login(recruiter)
+
+    response = client.get(f"{CREATE_URL}?candidate={ann.pk}")
+
+    assert response.url == ann.get_absolute_url()
+    assert message_texts(response) == [
+        "Ann Lee is archived, so they can't apply for anything. Unarchive them first."
+    ]
 
 
 def test_posting_a_closed_opening_directly_is_refused_and_writes_nothing(

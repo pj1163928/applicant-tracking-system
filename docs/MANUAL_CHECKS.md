@@ -74,10 +74,13 @@ Sign in as `manager`.
       and drop it. The card flies back into Final Review and gives a small shake,
       and the red message "… can only be moved to Hired from Offer." appears. No
       dialog opens.
-- [ ] **Reopen.** Expand Withdrawn and drag its card onto Rejected: refused
-      with "A withdrawn application can only be reopened to an active stage, not
-      Rejected." Then drag it onto Screening. The note dialog asks why it's being
-      reopened.
+- [ ] **Reopen.** Expand Withdrawn and drag Chloe Nguyen's card onto Rejected:
+      refused with "A withdrawn application can only be reopened to an active
+      stage, not Rejected." Then drag it onto Screening. The note dialog asks why
+      it's being reopened.
+- [ ] **Archived card.** In Withdrawn, Kai Moreno's card has an "Archived" badge,
+      no grip dots, no Move menu and the line "Unarchive Kai to move this card."
+      Pressing and dragging it does nothing.
 - [ ] **Escape.** Start a drag and press Escape before dropping. The card flies
       home, every highlight clears and nothing moves.
 - [ ] **Edge scrolling.** Make the window short, then carry a card towards the

@@ -1,8 +1,9 @@
 import pytest
+from django.utils import timezone
 
 from applications.forms import ApplicationForm, ApplicationSourceForm
 from applications.models import Application
-from candidates.models import Source
+from candidates.models import Candidate, Source
 
 pytestmark = pytest.mark.django_db
 
@@ -34,6 +35,28 @@ def test_a_hand_made_post_naming_a_closed_opening_fails_validation(ann, closed_o
     assert form.errors == {
         "opening": ["Pick an open opening. Closed openings don't take new applications."]
     }
+
+
+def test_the_candidate_choices_leave_out_archived_candidates(ann, ben):
+    Candidate.objects.filter(pk=ben.pk).update(is_archived=True, archived_at=timezone.now())
+
+    form = ApplicationForm()
+
+    assert list(form.fields["candidate"].queryset) == [ann]
+
+
+def test_a_hand_made_post_naming_an_archived_candidate_fails_validation(ann, backend, indeed):
+    Candidate.objects.filter(pk=ann.pk).update(is_archived=True, archived_at=timezone.now())
+
+    form = ApplicationForm(data={"candidate": ann.pk, "opening": backend.pk, "source": indeed.pk})
+
+    assert not form.is_valid()
+    assert form.errors == {
+        "candidate": [
+            "Pick a candidate who isn't archived. Archived candidates can't apply for anything."
+        ]
+    }
+    assert Application.objects.count() == 0
 
 
 def test_new_applications_can_only_pick_active_sources(indeed, linkedin, monster):

@@ -15,13 +15,28 @@ from accounts.roles import HIRING_MANAGER, RECRUITER, AnyUser, has_role
 if TYPE_CHECKING:
     from openings.models import JobOpening
 
-# Roles that add and edit candidates. Admins always pass role checks.
+# Roles that add, edit, archive and unarchive candidates. Admins always pass role checks.
 CANDIDATE_MANAGER_ROLES: tuple[str, ...] = (RECRUITER,)
 
 
 def can_manage_candidates(user: AnyUser) -> bool:
-    """Return True if the user may add or edit candidates: an Admin or a Recruiter."""
+    """Return True if the user may add, edit, archive or unarchive candidates.
+
+    That is an Admin or a Recruiter.
+    """
     return has_role(user, *CANDIDATE_MANAGER_ROLES)
+
+
+# Roles that permanently delete candidates, besides Admins: none. Admins always pass role checks.
+CANDIDATE_DELETER_ROLES: tuple[str, ...] = ()
+
+
+def can_delete_candidates(user: AnyUser) -> bool:
+    """Return True if the user may permanently delete candidates: an active Admin only.
+
+    Deleting can't be undone, so no role grants it, and neither does ``is_staff``.
+    """
+    return has_role(user, *CANDIDATE_DELETER_ROLES)
 
 
 # Roles that add, rename, retire and reactivate sources. Admins always pass role checks.

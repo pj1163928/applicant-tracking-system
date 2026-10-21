@@ -37,6 +37,10 @@ Plain pytest fixtures, no factory libraries. The root `conftest.py` provides:
 | `make_user(username, role=None, **fields)` | factory for anything else; password is `"pw"` |
 | `make_opening(title, authority, **fields)` | factory for a job opening (default department and description) |
 
+App-only fixtures worth knowing: `applications/tests/conftest.py` (candidates, sources,
+openings, and `apply` to record through the service) and `candidates/tests/conftest.py`
+(`kai`, and `application_at(candidate, opening, stage)` for an application at any stage).
+
 An autouse `fast_password_hashing` fixture switches every test to Django's MD5
 hasher. The default hasher is deliberately slow and made the suite about 90×
 slower. Settings outside tests are unchanged.

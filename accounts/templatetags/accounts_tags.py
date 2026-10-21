@@ -21,8 +21,14 @@ def can_make_changes(user: roles.AnyUser) -> bool:
 
 @register.filter
 def can_manage_candidates(user: roles.AnyUser) -> bool:
-    """Show candidate add and edit actions: ``{% if user|can_manage_candidates %}``."""
+    """Show candidate add, edit and archive actions: ``{% if user|can_manage_candidates %}``."""
     return permissions.can_manage_candidates(user)
+
+
+@register.filter
+def can_delete_candidates(user: roles.AnyUser) -> bool:
+    """Show the permanent-delete action: ``{% if user|can_delete_candidates %}``."""
+    return permissions.can_delete_candidates(user)
 
 
 @register.filter

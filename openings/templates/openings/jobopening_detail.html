@@ -88,6 +88,7 @@
           <p class="flex flex-wrap items-center gap-2">
             <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover font-semibold break-words">{{ application.candidate.full_name }}</a>
             {% include "applications/partials/stage_badge.html" %}
+            {% if application.candidate.is_archived %}{% include "candidates/partials/archived_badge.html" %}{% endif %}
           </p>
           {% include "applications/partials/source_line.html" %}
         </div>

@@ -3,6 +3,7 @@ from django.contrib.auth.models import AnonymousUser, Group
 
 from accounts.permissions import (
     can_be_designated_authority,
+    can_delete_candidates,
     can_make_offer,
     can_manage_applications,
     can_manage_candidates,
@@ -41,6 +42,32 @@ def test_inactive_recruiter_cannot_manage_candidates(recruiter):
 
 def test_anonymous_user_cannot_manage_candidates():
     assert can_manage_candidates(AnonymousUser()) is False
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "expected"),
+    [
+        ("admin", True),
+        ("recruiter", False),
+        ("hiring_manager", False),
+        ("interviewer", False),
+        ("no_role_user", False),
+    ],
+)
+def test_only_admins_can_delete_candidates(request, user_fixture, expected):
+    assert can_delete_candidates(request.getfixturevalue(user_fixture)) is expected
+
+
+def test_inactive_admins_staff_and_anonymous_users_cannot_delete_candidates(admin, make_user):
+    admin.is_active = False
+    staff = make_user("staffer", is_staff=True)
+    in_every_group = make_user("everyone")
+    in_every_group.groups.set(Group.objects.filter(name__in=[RECRUITER, HIRING_MANAGER]))
+
+    assert can_delete_candidates(admin) is False
+    assert can_delete_candidates(staff) is False
+    assert can_delete_candidates(in_every_group) is False
+    assert can_delete_candidates(AnonymousUser()) is False
 
 
 @pytest.mark.parametrize(

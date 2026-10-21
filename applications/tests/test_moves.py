@@ -4,10 +4,12 @@ import pytest
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import DatabaseError, connection
+from django.utils import timezone
 
 from accounts.roles import INTERVIEWER, RECRUITER
 from applications.models import Application, StageChange
 from applications.services import (
+    ARCHIVED_CANDIDATE,
     ILLEGAL_MOVE,
     NOTE_REQUIRED,
     STALE_STAGE,
@@ -183,6 +185,29 @@ def test_a_stale_card_cannot_overwrite_a_newer_stage(app, recruiter, hiring_mana
         move_application(card, Stage.REJECTED, by=recruiter, expected_stage=Stage.APPLIED)
 
     assert refused.value.code == STALE_STAGE
+    assert stored(app) == before
+
+
+@pytest.mark.parametrize(
+    ("start", "to_stage"),
+    [(Stage.REJECTED, Stage.SCREENING), (Stage.WITHDRAWN, Stage.APPLIED)],
+)
+def test_an_archived_candidates_application_cannot_be_reopened(app, admin, start, to_stage):
+    put_at(app, start)
+    card = Application.objects.select_related("candidate").get(pk=app.pk)
+    # Archived after the board loaded: the card's copy still says not archived.
+    Candidate.objects.filter(pk=app.candidate_id).update(
+        is_archived=True, archived_at=timezone.now()
+    )
+    before = stored(app)
+
+    with pytest.raises(ValidationError) as refused:
+        move_application(card, to_stage, by=admin, note="Back in the running.")
+
+    assert refused.value.code == ARCHIVED_CANDIDATE
+    assert refused.value.messages == [
+        "Ann Lee is archived, so their applications can't be moved. Unarchive them first."
+    ]
     assert stored(app) == before
 
 

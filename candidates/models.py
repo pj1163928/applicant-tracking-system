@@ -24,6 +24,10 @@ class CandidateQuerySet(models.QuerySet):
             )
         return candidates
 
+    def unarchived(self) -> "CandidateQuerySet":
+        """Return the candidates who aren't archived: the everyday list, and who may apply."""
+        return self.filter(is_archived=False)
+
 
 class Candidate(models.Model):
     """A person the company is tracking, whether or not they have applied yet.
@@ -31,6 +35,10 @@ class Candidate(models.Model):
     Emails are stored lowercased. Together with ``unique=True`` and the
     ``candidate_email_lowercase`` check, that makes them unique regardless of
     capital letters, even for writes that skip ``save()``.
+
+    An archived candidate (``is_archived``, with ``archived_at`` saying when)
+    drops out of the everyday list and can't apply for anything, but keeps
+    their applications. Archive and unarchive through ``candidates.services``.
     """
 
     first_name = models.CharField(max_length=100)
@@ -41,6 +49,8 @@ class Candidate(models.Model):
     )
     phone = models.CharField(max_length=30, blank=True)
     notes = models.TextField(blank=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -52,6 +62,12 @@ class Candidate(models.Model):
             models.CheckConstraint(
                 condition=models.Q(email=Lower("email")),
                 name="candidate_email_lowercase",
+            ),
+            # Archived exactly when there's an archive date, so the two never disagree.
+            models.CheckConstraint(
+                condition=Q(is_archived=True, archived_at__isnull=False)
+                | Q(is_archived=False, archived_at__isnull=True),
+                name="candidate_archived_has_date",
             ),
         ]
 

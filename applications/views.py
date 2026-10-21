@@ -95,6 +95,13 @@ class ApplicationCreateView(RoleRequiredMixin, SourceFieldsMixin, CreateView):
                 request, f"{opening.title} is closed, so it can't take new applications."
             )
             return redirect(opening)
+        if candidate is not None and candidate.is_archived:
+            messages.error(
+                request,
+                f"{candidate.full_name} is archived, so they can't apply for anything. "
+                "Unarchive them first.",
+            )
+            return redirect(candidate)
         if candidate is not None and not openings_open_to(candidate).exists():
             messages.error(
                 request, f"There are no open openings {candidate.full_name} hasn't applied for."

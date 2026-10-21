@@ -16,15 +16,21 @@
   {% endif %}
 </div>
 
-<form method="get" action="{% url 'candidates:list' %}" role="search" class="mt-6"
+<form method="get" action="{% url 'candidates:list' %}" role="search" class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3"
       hx-get="{% url 'candidates:list' %}" hx-target="#candidate-results" hx-push-url="true"
-      hx-trigger="input changed delay:300ms from:#candidate-search, search from:#candidate-search, submit">
+      hx-trigger="input changed delay:300ms from:#candidate-search, search from:#candidate-search, change from:#show-archived, submit">
   <label class="input w-full sm:max-w-md">
     {% icon "search" "size-4 opacity-60" %}
     <input type="search" name="q" id="candidate-search" value="{{ q }}" class="grow"
            placeholder="Search by name or email" aria-label="Search candidates by name or email"
            autocomplete="off">
   </label>
+  <label class="label cursor-pointer gap-2 text-sm text-base-content">
+    <input type="checkbox" name="archived" value="1" id="show-archived" class="toggle toggle-sm toggle-primary"
+           {% if show_archived %}checked{% endif %} data-testid="show-archived">
+    {% icon "archive" "size-4 opacity-60" %} Show archived
+  </label>
+  <noscript><button type="submit" class="btn btn-sm">Apply</button></noscript>
 </form>
 
 <div id="candidate-results" class="mt-4" aria-live="polite">

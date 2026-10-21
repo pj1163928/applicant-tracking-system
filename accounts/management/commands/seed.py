@@ -17,6 +17,7 @@ from applications.models import Application
 from applications.services import move_application, record_application
 from applications.stages import Stage
 from candidates.models import Candidate, Source
+from candidates.services import archive_candidate
 from openings.models import JobOpening, OpeningSkill, Skill
 from openings.services import find_or_create_skill
 
@@ -67,6 +68,8 @@ SEED_CANDIDATES: tuple[SeedCandidate, ...] = (
     ),
     SeedCandidate("Isaac", "Brown", "isaac.brown@example.com"),
     SeedCandidate("Jade", "Okafor", "jade.okafor@example.com", "555-0110"),
+    # Phase 9: withdraws from Backend Developer, then is archived (SEED_ARCHIVED).
+    SeedCandidate("Kai", "Moreno", "kai.moreno@example.com", "", "Moved abroad; not looking now."),
 )
 
 
@@ -204,6 +207,8 @@ SEED_APPLICATIONS: tuple[SeedApplication, ...] = (
     SeedApplication("chloe.nguyen@example.com", "Backend Developer", "Company careers page"),
     SeedApplication("isaac.brown@example.com", "Backend Developer", "LinkedIn Jobs"),
     SeedApplication("jade.okafor@example.com", "Backend Developer", "Career fair"),
+    # Phase 9: Kai's application stays on the board after Kai is archived.
+    SeedApplication("kai.moreno@example.com", "Backend Developer", "Indeed"),
 )
 
 
@@ -263,6 +268,12 @@ SEED_MOVES: tuple[SeedMove, ...] = (
         ((Stage.WITHDRAWN, "Accepted another offer."),),
     ),
     SeedMove(
+        "kai.moreno@example.com",
+        "Backend Developer",
+        "recruiter",
+        ((Stage.WITHDRAWN, "Moving abroad for family reasons."),),
+    ),
+    SeedMove(
         "elena.rossi@example.com",
         "Product Designer",
         "admin",
@@ -277,10 +288,16 @@ SEED_MOVES: tuple[SeedMove, ...] = (
 )
 
 
+# Phase 9. Seeded candidates archived once all their seeded moves are made, through
+# archive_candidate(). Only a candidate seed has just created is archived, so a
+# re-run never re-archives one that staff have unarchived.
+SEED_ARCHIVED: tuple[str, ...] = ("kai.moreno@example.com",)
+
+
 class Command(BaseCommand):
     help = (
-        "Create one demo user per role, plus sample candidates, sources, openings with "
-        "skills, and applications, some moved along the pipeline."
+        "Create one demo user per role, plus sample candidates (one archived), sources, "
+        "openings with skills, and applications, some moved along the pipeline."
     )
 
     @transaction.atomic
@@ -289,7 +306,8 @@ class Command(BaseCommand):
             user, created = seed_user(spec)
             action = "Created" if created else "Checked"
             self.stdout.write(f"{action} user '{user.username}'")
-        created = sum(seed_candidate(spec)[1] for spec in SEED_CANDIDATES)
+        new_candidates = {spec.email for spec in SEED_CANDIDATES if seed_candidate(spec)[1]}
+        created = len(new_candidates)
         self.stdout.write(
             f"Candidates: {created} created, {len(SEED_CANDIDATES) - created} checked"
         )
@@ -314,6 +332,14 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Stage moves: {results.count(CREATED)} paths made, {results.count(CHECKED)} checked, "
             f"{results.count(SKIPPED)} skipped"
+        )
+        results = [
+            seed_archived(email, recruiter, just_created=email in new_candidates)
+            for email in SEED_ARCHIVED
+        ]
+        self.stdout.write(
+            f"Archived candidates: {results.count(CREATED)} archived, "
+            f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
         )
         self.stdout.write(
             self.style.SUCCESS(f"Seed complete. Password for every user: {SEED_PASSWORD}")
@@ -492,5 +518,22 @@ def seed_moves(spec: SeedMove) -> str:
             for stage, note in spec.path:
                 move_application(application, stage, by=by, note=note)
     except (ValidationError, PermissionDenied):
+        return SKIPPED
+    return CREATED
+
+
+def seed_archived(email: str, by: User, *, just_created: bool) -> str:
+    """Archive one seeded candidate that this run created; return CREATED, CHECKED or SKIPPED.
+
+    A candidate from an earlier run is left as it is (CHECKED), archived or
+    not, because staff may have unarchived them on purpose. The archive goes
+    through ``archive_candidate()``, so it is SKIPPED if one of their
+    applications is still active.
+    """
+    if not just_created:
+        return CHECKED
+    try:
+        archive_candidate(Candidate.objects.get(email=email), by=by)
+    except ValidationError:
         return SKIPPED
     return CREATED

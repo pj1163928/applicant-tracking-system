@@ -1,9 +1,11 @@
 {% comment %}
 Candidate search results. Rendered inside the list page, and on its own for
-HTMX searches (which swap it into #candidate-results).
+HTMX searches (which swap it into #candidate-results). Archived candidates are
+left out unless "Show archived" is on, and the count says how many are hidden.
 {% endcomment %}
 <p class="mb-2 text-sm opacity-70" data-testid="result-count">
-  {% if q %}{{ candidates|length }} of {{ total }} candidate{{ total|pluralize }} match “{{ q }}”{% else %}{{ total }} candidate{{ total|pluralize }}{% endif %}
+  {% if q %}{{ candidates|length }} of {{ total }} candidate{{ total|pluralize }} match “{{ q }}”{% else %}{{ total }} candidate{{ total|pluralize }}{% endif %}{% if archived_count %}
+  · {% if show_archived %}including {{ archived_count }} archived{% else %}<span data-testid="archived-hidden">{{ archived_count }} archived hidden</span>{% endif %}{% endif %}
 </p>
 
 {% if candidates %}
@@ -11,12 +13,15 @@ HTMX searches (which swap it into #candidate-results).
   {% for candidate in candidates %}
   <li class="list-row items-center transition-colors hover:bg-base-200/60 motion-reduce:transition-none" data-testid="candidate-row">
     <div class="avatar avatar-placeholder" aria-hidden="true">
-      <div class="w-10 rounded-full bg-secondary/15 text-secondary">
+      <div class="w-10 rounded-full {% if candidate.is_archived %}bg-base-300/60 text-base-content/60{% else %}bg-secondary/15 text-secondary{% endif %}">
         <span class="text-sm font-semibold">{{ candidate.first_name|first|upper }}{{ candidate.last_name|first|upper }}</span>
       </div>
     </div>
     <div class="min-w-0">
-      <a href="{{ candidate.get_absolute_url }}" class="link link-hover font-semibold">{{ candidate.full_name }}</a>
+      <p class="flex flex-wrap items-center gap-2">
+        <a href="{{ candidate.get_absolute_url }}" class="link link-hover font-semibold{% if candidate.is_archived %} opacity-80{% endif %}">{{ candidate.full_name }}</a>
+        {% if candidate.is_archived %}{% include "candidates/partials/archived_badge.html" %}{% endif %}
+      </p>
       <p class="truncate text-sm opacity-70">{{ candidate.email }}</p>
     </div>
     <span class="hidden text-sm opacity-70 sm:block">{{ candidate.phone }}</span>
@@ -27,6 +32,6 @@ HTMX searches (which swap it into #candidate-results).
 <div class="rounded-box border border-dashed border-base-300 bg-base-100 p-8 text-center" data-testid="no-results">
   {% icon "inbox" "mx-auto size-8 opacity-50" %}
   <p class="mt-2 font-semibold">{% if q %}No candidates match “{{ q }}”.{% else %}No candidates yet.{% endif %}</p>
-  <p class="text-sm opacity-70">{% if q %}Try part of a first name, last name or email.{% else %}Candidates you add will show up here.{% endif %}</p>
+  <p class="text-sm opacity-70">{% if q %}Try part of a first name, last name or email.{% else %}Candidates you add will show up here.{% endif %}{% if archived_count and not show_archived %} Archived candidates are hidden; turn on Show archived to include them.{% endif %}</p>
 </div>
 {% endif %}

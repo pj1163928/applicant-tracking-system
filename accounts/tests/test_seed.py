@@ -18,6 +18,7 @@ from applications.models import Application, StageChange
 from applications.services import move_application, prefill_source
 from applications.stages import Stage, can_move, requires_note
 from candidates.models import Candidate, Source
+from candidates.services import unarchive_candidate
 from openings.models import JobOpening, OpeningSkill, Skill
 
 pytestmark = pytest.mark.django_db
@@ -283,6 +284,26 @@ def test_seed_moves_a_path_completely_or_not_at_all():
     seed_moves(next(s for s in SEED_MOVES if s.candidate == "hana.kim@example.com"))
 
     assert stored_path(hana) == (Stage.APPLIED, 1)
+
+
+def test_seed_archives_kai_whose_withdrawn_application_stays_on_the_board():
+    call_command("seed")
+
+    kai = Candidate.objects.get(email="kai.moreno@example.com")
+    assert kai.is_archived and kai.archived_at is not None
+    assert list(Candidate.objects.filter(is_archived=True)) == [kai]
+    application = kai.applications.get()
+    assert (application.opening.title, application.stage) == ("Backend Developer", Stage.WITHDRAWN)
+
+
+def test_rerunning_seed_never_rearchives_a_candidate_staff_unarchived():
+    call_command("seed")
+    kai = Candidate.objects.get(email="kai.moreno@example.com")
+    unarchive_candidate(kai, by=User.objects.get(username="recruiter"))
+
+    call_command("seed")
+
+    assert Candidate.objects.get(pk=kai.pk).is_archived is False
 
 
 def stored_path(application) -> tuple[str, int]:

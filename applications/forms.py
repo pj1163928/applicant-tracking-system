@@ -68,11 +68,11 @@ SELECT = ("select w-full", "select-error")
 
 
 class ApplicationForm(ReferredByMixin, DaisyUIFormMixin, forms.ModelForm):
-    """Record a new application: a candidate, an open opening and an active source.
+    """Record a new application: an unarchived candidate, an open opening and an active source.
 
     Each dropdown's queryset both lists the choices and validates the
-    submitted pk, so a hand-made POST naming a closed opening or a retired
-    source fails validation.
+    submitted pk, so a hand-made POST naming an archived candidate, a closed
+    opening or a retired source fails validation.
     """
 
     CLASSES = {"candidate": SELECT, "opening": SELECT, "source": SELECT}
@@ -80,8 +80,12 @@ class ApplicationForm(ReferredByMixin, DaisyUIFormMixin, forms.ModelForm):
     REFRESH_FIELDS = ("candidate", "source")
 
     candidate = CandidateChoiceField(
-        queryset=Candidate.objects.all(),
-        error_messages={"required": "Pick the candidate who applied."},
+        queryset=Candidate.objects.unarchived(),
+        error_messages={
+            "required": "Pick the candidate who applied.",
+            "invalid_choice": "Pick a candidate who isn't archived. Archived candidates can't "
+            "apply for anything.",
+        },
     )
     opening = OpeningChoiceField(
         queryset=JobOpening.objects.accepting_applications(),
