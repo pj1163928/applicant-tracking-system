@@ -68,3 +68,9 @@ def apply(recruiter):
         )
 
     return _apply
+
+
+@pytest.fixture
+def app(apply, ann, backend, indeed) -> Application:
+    """Ann's application for Backend Developer, whose authority is Hal (a Hiring Manager)."""
+    return apply(ann, backend, indeed)

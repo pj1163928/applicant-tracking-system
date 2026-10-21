@@ -1,9 +1,23 @@
-{% comment %}One application's card. Expects `application`, `column` and `opening`.{% endcomment %}
-<li class="rounded-box border border-base-300 bg-base-100 p-3 shadow-sm transition-shadow hover:shadow motion-reduce:transition-none" id="card-{{ application.pk }}" data-testid="card">
+{% comment %}
+One application's card. Expects `application`, `column` and `opening`. A card
+with Move targets can also be dragged (by the board's script, with a mouse or
+by touch): data-move-targets and data-note-targets are hints for highlighting columns, and the hidden drop form is what a drop
+posts, so the server decides exactly as it does for the Move menu. After a move,
+the card just moved arrives animated (`landed_pk`), and a card whose move was
+refused shakes where it stayed (`bounced_pk`). Included from column_cards.html's
+loop: cards past the column's fold are marked data-beyond-fold, and data-name is
+what the column's search matches.
+{% endcomment %}
+{% with draggable=column.targets %}
+<li class="rounded-box border border-base-300 bg-base-100 p-3 shadow-sm transition-[box-shadow,opacity,translate,scale,rotate] duration-200 hover:shadow motion-reduce:transition-none{% if draggable %} cursor-grab select-none [-webkit-touch-callout:none] hover:-translate-y-0.5 hover:shadow-md motion-reduce:hover:translate-y-0{% endif %}{% if application.pk == landed_pk %} animate-land motion-reduce:animate-none{% elif application.pk == bounced_pk %} animate-shake motion-reduce:animate-none{% endif %}" id="card-{{ application.pk }}" data-testid="card" data-name="{{ application.candidate.full_name }}"{% if forloop.counter > column.fold_at %} data-beyond-fold{% endif %}
+    {% if draggable %}data-candidate="{{ application.candidate.full_name }}" data-move-targets="{{ column.drop_stages }}" data-note-targets="{{ column.note_stages }}"{% endif %}>
   <div class="flex items-start justify-between gap-2">
-    <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover min-w-0 font-semibold break-words">{{ application.candidate.full_name }}</a>
+    <span class="flex min-w-0 items-start gap-1">
+      {% if draggable %}<span class="mt-0.5 -ml-1 opacity-40" title="Drag to another stage">{% icon "grip-vertical" "size-4" %}</span>{% endif %}
+      <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover min-w-0 font-semibold break-words"{% if draggable %} draggable="false"{% endif %}>{{ application.candidate.full_name }}</a>
+    </span>
     <a href="{% url 'applications:history' application.pk %}" hx-get="{% url 'applications:history' application.pk %}" hx-target="#dialog-slot"
-       class="btn btn-ghost btn-xs btn-square shrink-0" aria-label="Stage history for {{ application.candidate.full_name }}" title="Stage history" data-testid="history-link">
+       class="btn btn-ghost btn-xs btn-square shrink-0" aria-label="Stage history for {{ application.candidate.full_name }}" title="Stage history" data-testid="history-link"{% if draggable %} draggable="false"{% endif %}>
       {% icon "history" "size-4" %}
     </a>
   </div>
@@ -11,5 +25,14 @@
     <span class="inline-flex items-center gap-1">{% icon "signpost" "size-3.5" %} {{ application.source.name }}</span>
     <span>Applied {{ application.created_at|date:"M j" }}</span>
   </p>
-  {% if column.targets %}{% include "applications/partials/move_menu.html" %}{% endif %}
+  {% if draggable %}
+  {% include "applications/partials/move_menu.html" %}
+  <form method="post" action="{% url 'applications:move' application.pk %}" hx-post="{% url 'applications:move' application.pk %}" hx-target="#board-status" hidden data-drop-form data-testid="drop-form">
+    {% csrf_token %}
+    <input type="hidden" name="to_stage" value="">
+    <input type="hidden" name="expected_stage" value="{{ application.stage }}">
+    <input type="hidden" name="dropped" value="on">
+  </form>
+  {% endif %}
 </li>
+{% endwith %}

@@ -233,10 +233,10 @@ Adds built-in browser drag-and-drop (no SortableJS) to the board's cards and col
 
 ### Acceptance criteria
 
-- [ ] Dragging a card onto a legal column moves it through the existing endpoint.
-- [ ] Dropping onto a column that needs a note opens the note modal first.
-- [ ] Dropping onto an illegal column is refused, and the card goes back where it was.
-- [ ] The Move menu keeps working, and Interviewers can't drag.
+- [x] Dragging a card onto a legal column moves it through the existing endpoint.
+- [x] Dropping onto a column that needs a note opens the note modal first.
+- [x] Dropping onto an illegal column is refused, and the card goes back where it was.
+- [x] The Move menu keeps working, and Interviewers can't drag.
 - [ ] A manual browser checklist for drag-and-drop exists and has been followed.
 
 ### TDD

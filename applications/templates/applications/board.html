@@ -28,7 +28,7 @@
 
   {% if user|can_move_applications %}
   <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" data-testid="board-legend">
-    <span class="opacity-70">Use <strong>Move</strong> on a card:</span>
+    <span class="opacity-70">Drag a card to another stage (on a touch screen, press and hold it first), or use <strong>Move</strong> on a card:</span>
     <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-success badge-soft">next</span> one step forward</span>
     <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-warning badge-soft">note</span> needs a note</span>
     <span class="inline-flex items-center gap-1.5"><span class="badge badge-xs badge-ghost">optional note</span> asks for one</span>
@@ -37,6 +37,7 @@
     {% else %}
     <span class="badge badge-sm badge-ghost h-auto py-0.5" data-testid="offer-withheld">Offer and Hired: Admins, Hiring Managers or {{ opening.designated_authority.get_full_name|default:opening.designated_authority.username }}</span>
     {% endif %}
+    <p class="basis-full text-xs opacity-60" data-testid="drag-legend">While you drag, green stages move the card one step forward, amber ones ask for a note, and faded ones refuse it and say why. Nothing moves until you confirm the drop.</p>
   </div>
   {% else %}
   <div role="note" class="alert alert-info alert-soft mt-4 text-sm" data-testid="view-only">
@@ -48,12 +49,25 @@
   {# Move results and refusals are swapped in here; screen readers announce them. #}
   <div id="board-status" role="status" aria-live="polite"></div>
 
-  <div class="-mx-4 mt-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0" data-testid="board">
-    <div class="flex items-start gap-3">
-      {% for column in columns %}
+  {# Where cards can be dropped: the pipeline, and the panels below it. #}
+  <div data-drop-area>
+  {# The pipeline fills the page width: stacked on phones, three stages a row from md up. #}
+  <div class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]" data-testid="board">
+    {% for column in pipeline %}
+    {% include "applications/partials/column.html" %}
+    {% if not forloop.last %}{% include "applications/partials/stage_arrow.html" with wraps=forloop.counter|divisibleby:3 %}{% endif %}
+    {% endfor %}
+  </div>
+
+  {# Rejected and Withdrawn sit apart from the pipeline, collapsed to counts. #}
+  <section class="mt-6" aria-labelledby="closed-stages-heading" data-testid="closed-stages">
+    <h2 id="closed-stages-heading" class="text-xs font-semibold uppercase tracking-wide opacity-60">Out of the pipeline</h2>
+    <div class="mt-2 grid gap-3 md:grid-cols-2">
+      {% for column in closed %}
       {% include "applications/partials/column.html" %}
       {% endfor %}
     </div>
+  </section>
   </div>
 
   {# The note dialog and the history dialog are swapped in here. #}
@@ -76,6 +90,325 @@
     document.body.addEventListener("htmx:afterSettle", function () {
       const dialog = document.querySelector("#dialog-slot dialog:not([open])");
       if (dialog) dialog.showModal();
+    });
+
+    // Columns with more than three cards fold to the newest three. The toggle comes with the
+    // cards, so a move redraws it; the column itself keeps data-expanded and its search text,
+    // and after every swap they're applied to the new cards. Expanded, the search box
+    // filters the column's cards by name as you type.
+    function syncColumn(column) {
+      const toggle = column.querySelector("[data-fold-button]");
+      if (toggle) toggle.setAttribute("aria-expanded", "expanded" in column.dataset ? "true" : "false");
+      else delete column.dataset.expanded; // three or fewer cards now: nothing to fold
+      filterColumn(column);
+    }
+
+    function filterColumn(column) {
+      const search = column.querySelector("[data-stage-search]");
+      const query = "expanded" in column.dataset ? search.value.trim().toLowerCase() : "";
+      let shown = 0;
+      column.querySelectorAll("[data-cards] > [data-name]").forEach(function (card) {
+        const miss = Boolean(query) && !card.dataset.name.toLowerCase().includes(query);
+        card.toggleAttribute("data-search-miss", miss);
+        if (!miss) shown += 1;
+      });
+      column.querySelector("[data-no-match]").hidden = !query || shown > 0;
+    }
+
+    board.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-fold-button]");
+      if (!button) return;
+      const column = button.closest("[data-drop-stage]");
+      if ("expanded" in column.dataset) {
+        delete column.dataset.expanded;
+        column.querySelector("[data-stage-search]").value = "";
+      } else {
+        column.dataset.expanded = "";
+      }
+      syncColumn(column);
+    });
+    board.addEventListener("input", function (event) {
+      if (event.target.matches("[data-stage-search]")) filterColumn(event.target.closest("[data-drop-stage]"));
+    });
+    document.body.addEventListener("htmx:afterSettle", function () {
+      dropColumns().forEach(syncColumn);
+    });
+
+    // Drag-and-drop, built on pointer events so it works with a mouse and on touch screens
+    // (press and hold a card first). A solid copy of the card follows the pointer while a
+    // dashed slot holds its place. Every other column lights up from the card's own Move
+    // targets (green: one step forward, amber: a note is asked for, faded: refused), and the
+    // column under the pointer grows, with a card-shaped gap where the card would land.
+    // These are only hints: the server decides. A legal drop settles the card into the gap and
+    // posts the card's hidden drop form, the same request as its Move menu plus `dropped`, so
+    // the server answers with the confirmation (or note) dialog. Closing the dialog without
+    // moving slides the card home. A drop on a faded column flies the card home and is posted
+    // anyway, so the server refuses it and says why. Listeners sit on the board and the
+    // document, so cards swapped in after a move can be dragged too.
+    const HOLD_MS = 280; // touch: how long to press before the card lifts
+    const MOVE_PX = 4; // mouse: how far to move before the card lifts
+    const SCROLL_SLOP_PX = 10; // touch: moving further before the hold ends means scrolling
+    const EDGE_PX = 70; // dragging this close to the top or bottom edge scrolls the page
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const dropArea = board.querySelector("[data-drop-area]");
+    let drag = null; // the card being dragged
+    let pending = null; // a dropped card waiting in its new column while the dialog asks
+    let holding = false; // a touch is pressing a card
+    let swallowClick = false;
+
+    function dropColumns() {
+      return board.querySelectorAll("[data-drop-stage]");
+    }
+
+    function duration() {
+      return reducedMotion.matches ? 0 : 260;
+    }
+
+    function placeAt(element, x, y) {
+      element.style.transform = "translate(" + x + "px, " + y + "px)";
+    }
+
+    // Animate the floating copy to a rectangle (shrinking into a collapsed panel), then `done`.
+    function flyTo(float, rect, shrink, done) {
+      float.classList.remove("lifted");
+      const to = "translate(" + rect.left + "px, " + rect.top + "px)";
+      const end = shrink ? { transform: to, opacity: 0, scale: "0.4" } : { transform: to };
+      float.animate([{ transform: float.style.transform }, end], {
+        duration: duration(),
+        easing: "cubic-bezier(.2, .8, .2, 1)",
+        fill: "forwards",
+      }).finished.then(done);
+    }
+
+    function startDrag(card, x, y) {
+      const rect = card.getBoundingClientRect();
+      const home = card.closest("[data-drop-stage]");
+      const targets = card.dataset.moveTargets.split(" ");
+      const notes = card.dataset.noteTargets.split(" ");
+      dropColumns().forEach(function (column) {
+        if (column === home) return; // dropping a card back where it is does nothing
+        const stage = column.dataset.dropStage;
+        column.dataset.drop = !targets.includes(stage) ? "no" : notes.includes(stage) ? "note" : "ok";
+      });
+      const float = card.cloneNode(true);
+      float.removeAttribute("id");
+      float.querySelectorAll("[id]").forEach(function (element) { element.removeAttribute("id"); });
+      float.classList.remove("animate-land", "animate-shake");
+      float.classList.add("drag-float");
+      float.setAttribute("aria-hidden", "true");
+      float.style.width = rect.width + "px";
+      placeAt(float, rect.left, rect.top);
+      document.body.append(float);
+      requestAnimationFrame(function () { float.classList.add("lifted"); });
+      const slot = document.createElement("li");
+      slot.className = "drag-slot";
+      slot.style.height = rect.height + "px";
+      card.before(slot);
+      card.hidden = true;
+      document.body.classList.add("card-dragging");
+      drag = { card: card, home: home, float: float, slot: slot, height: rect.height,
+               offsetX: x - rect.left, offsetY: y - rect.top, x: x, y: y, over: null, gap: null };
+      autoScroll();
+    }
+
+    function moveTo(x, y) {
+      drag.x = x;
+      drag.y = y;
+      placeAt(drag.float, x - drag.offsetX, y - drag.offsetY);
+      findColumn();
+    }
+
+    function findColumn() {
+      const under = document.elementsFromPoint(drag.x, drag.y).find(function (element) {
+        return dropArea.contains(element);
+      });
+      if (!under) return setOver(null);
+      const column = under.closest("[data-drop-stage]");
+      if (column === drag.home) return setOver(null);
+      // Between columns (on an arrow, say), keep the last one, so opening gaps can't flicker.
+      if (column) setOver(column);
+    }
+
+    function setOver(column) {
+      if (column === drag.over) return;
+      if (drag.over) delete drag.over.dataset.dropOver;
+      if (drag.gap) drag.gap.remove();
+      drag.over = column;
+      drag.gap = null;
+      document.body.classList.toggle("drop-refused", Boolean(column) && column.dataset.drop === "no");
+      if (!column) return;
+      column.dataset.dropOver = "";
+      const list = column.querySelector("#cards-" + column.dataset.dropStage);
+      // A gap where the card would land, unless the move is refused or the panel is collapsed.
+      if (column.dataset.drop !== "no" && !column.matches("details:not([open])")) {
+        drag.gap = document.createElement("li");
+        drag.gap.className = "drop-gap";
+        drag.gap.dataset.gap = column.dataset.drop;
+        drag.gap.style.height = drag.height + "px";
+        list.prepend(drag.gap); // cards are newest first, so a moved card lands at the top
+      }
+    }
+
+    function goHome(d, after) {
+      flyTo(d.float, d.slot.getBoundingClientRect(), false, function () {
+        d.float.remove();
+        d.slot.replaceWith(d.card);
+        d.card.hidden = false;
+        if (after) after();
+      });
+    }
+
+    function submitDrop(card, stage) {
+      const form = card.querySelector("[data-drop-form]");
+      form.elements.to_stage.value = stage;
+      form.requestSubmit(); // HTMX sends it, as it does the Move menu's forms
+    }
+
+    // The pointer let go (`dropped`), or the drag was cancelled.
+    function finish(dropped) {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      dropColumns().forEach(function (column) {
+        delete column.dataset.drop;
+        delete column.dataset.dropOver;
+      });
+      document.body.classList.remove("card-dragging", "drop-refused");
+      const column = d.over;
+      if (!dropped || !column) {
+        if (d.gap) d.gap.remove();
+        return goHome(d);
+      }
+      const stage = column.dataset.dropStage;
+      if (column.dataset.drop === "no") return goHome(d, function () { submitDrop(d.card, stage); });
+      const target = (d.gap || column).getBoundingClientRect();
+      flyTo(d.float, target, !d.gap, function () {
+        d.float.remove();
+        if (d.gap) d.gap.replaceWith(d.card);
+        else column.querySelector("#cards-" + stage).prepend(d.card);
+        d.card.hidden = false;
+        d.card.classList.add("drop-pending");
+        pending = { card: d.card, slot: d.slot };
+        submitDrop(d.card, stage);
+      });
+    }
+
+    // Put a waiting card back where it came from, sliding it there when it's visible.
+    function returnPending(animate) {
+      const p = pending;
+      pending = null;
+      if (!p || !p.card.isConnected || !p.slot.isConnected) return;
+      const first = p.card.getBoundingClientRect();
+      p.slot.replaceWith(p.card);
+      p.card.classList.remove("drop-pending");
+      const last = p.card.getBoundingClientRect();
+      if (animate && first.width && duration()) {
+        p.card.animate(
+          [{ transform: "translate(" + (first.left - last.left) + "px, " + (first.top - last.top) + "px)" },
+           { transform: "none" }],
+          { duration: duration(), easing: "cubic-bezier(.2, .8, .2, 1)" });
+      }
+    }
+
+    function autoScroll() {
+      if (!drag) return;
+      let step = 0;
+      if (drag.y < EDGE_PX) step = -(EDGE_PX - drag.y) / 3;
+      else if (drag.y > window.innerHeight - EDGE_PX) step = (drag.y - (window.innerHeight - EDGE_PX)) / 3;
+      if (step) {
+        window.scrollBy(0, step);
+        findColumn();
+      }
+      requestAnimationFrame(autoScroll);
+    }
+
+    board.addEventListener("pointerdown", function (event) {
+      if (drag || pending || event.button > 0) return;
+      const card = event.target.closest("[data-move-targets]");
+      if (!card || event.target.closest("button, summary, input, textarea, select, .btn")) return;
+      const id = event.pointerId;
+      const touch = event.pointerType !== "mouse";
+      const start = { x: event.clientX, y: event.clientY };
+      let last = start;
+      let started = false;
+      let timer = null;
+      function begin() {
+        started = true;
+        clearTimeout(timer);
+        try { board.setPointerCapture(id); } catch (e) {} // keep events if it leaves the window
+        startDrag(card, last.x, last.y);
+      }
+      function stop() {
+        holding = false;
+        clearTimeout(timer);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onCancel);
+      }
+      function onMove(e) {
+        if (e.pointerId !== id) return;
+        last = { x: e.clientX, y: e.clientY };
+        if (started) return moveTo(last.x, last.y);
+        const distance = Math.hypot(last.x - start.x, last.y - start.y);
+        if (!touch && distance > MOVE_PX) begin();
+        else if (touch && distance > SCROLL_SLOP_PX) stop(); // moved before the hold: scrolling
+      }
+      function onUp(e) {
+        if (e.pointerId !== id) return;
+        stop();
+        if (!started) return;
+        swallowClick = true; // the click that follows a drag isn't a click on a link
+        setTimeout(function () { swallowClick = false; });
+        finish(true);
+      }
+      function onCancel(e) {
+        if (e.pointerId !== id) return;
+        stop();
+        if (started) finish(false);
+      }
+      if (touch) {
+        holding = true;
+        timer = setTimeout(function () {
+          begin();
+          if (navigator.vibrate) navigator.vibrate(15);
+        }, HOLD_MS);
+      }
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onCancel);
+    });
+
+    // While a card is dragged by touch, the page mustn't scroll under the finger, and the
+    // press-and-hold mustn't open the browser's menu.
+    document.addEventListener("touchmove", function (event) {
+      if (drag) event.preventDefault();
+    }, { passive: false });
+    board.addEventListener("contextmenu", function (event) {
+      if (holding || drag) event.preventDefault();
+    });
+    document.addEventListener("click", function (event) {
+      if (!swallowClick) return;
+      swallowClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && drag) finish(false);
+    });
+
+    // While a dropped card waits: closing the dialog without moving sends it home, and any
+    // other answer (a move or a refusal) redraws the columns as they really are, so put it
+    // back first.
+    document.addEventListener("close", function (event) {
+      if (pending && event.target.closest && event.target.closest("#dialog-slot")) returnPending(true);
+    }, true);
+    document.body.addEventListener("htmx:beforeSwap", function (event) {
+      if (!pending || event.detail.xhr.getResponseHeader("HX-Retarget") === "#dialog-slot") return;
+      returnPending(false);
+    });
+    document.body.addEventListener("htmx:afterRequest", function (event) {
+      const status = event.detail.xhr.status;
+      if (pending && event.detail.failed && status !== 400 && status !== 403) returnPending(true);
     });
   })();
 </script>

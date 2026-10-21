@@ -16,12 +16,6 @@ pytestmark = pytest.mark.django_db
 HTMX = {"HTTP_HX_REQUEST": "true"}
 
 
-@pytest.fixture
-def app(apply, ann, backend, indeed) -> Application:
-    """Ann's application for Backend Developer, whose authority is Hal (a Hiring Manager)."""
-    return apply(ann, backend, indeed)
-
-
 def board_url(opening) -> str:
     return reverse("openings:board", args=[opening.pk])
 
@@ -99,7 +93,8 @@ def test_rejected_and_withdrawn_are_collapsed_to_a_count_that_expands(
 
     rejected_column = section(html, "column-rejected", "</details>")
     assert rejected_column.startswith('data-testid="column-rejected"')
-    assert html.count('<details class="group w-14') == 2  # Rejected and Withdrawn, closed
+    # Rejected and Withdrawn, closed: no `open` attribute on either <details>.
+    assert len(re.findall(r"<details (?![^>]*\bopen\b)[^>]*data-testid=\"column-", html)) == 2
     assert re.search(r'data-testid="count-rejected">1<', html)
     assert re.search(r'data-testid="count-withdrawn">0<', html)
     # Expanding shows the cards: they're inside the <details>, not left out.

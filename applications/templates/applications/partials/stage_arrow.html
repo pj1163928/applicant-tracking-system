@@ -1,0 +1,21 @@
+{% comment %}
+The arrow from one pipeline stage to the next. Decorative: the stages are
+already in order for screen readers. Phones stack the stages, so it points
+down. From md up the board has three stages a row, so it points right, and
+the arrow that ends a row (`wraps`) becomes a full-width connector from the
+middle of the last column down to the middle of the first one.
+{% endcomment %}
+{% if wraps %}
+<div class="flex justify-center text-base-content/30 md:col-span-full md:block md:px-[16.67%]" aria-hidden="true" data-testid="stage-arrow">
+  {% icon "arrow-down" "size-5 md:hidden" %}
+  <svg class="hidden h-4 w-full overflow-visible md:block" viewBox="0 0 100 16" preserveAspectRatio="none" fill="none">
+    <path d="M100 0V8H0V16" stroke="currentColor" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+  </svg>
+  <span class="-mt-1 -ml-2.5 hidden w-5 md:block">{% icon "arrow-down" "size-5" %}</span>
+</div>
+{% else %}
+<div class="flex justify-center text-base-content/30 md:pt-2" aria-hidden="true" data-testid="stage-arrow">
+  {% icon "arrow-down" "size-5 md:hidden" %}
+  {% icon "arrow-right" "hidden size-5 md:block" %}
+</div>
+{% endif %}

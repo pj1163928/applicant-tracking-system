@@ -58,6 +58,8 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
             ],
             "builtins": ["config.templatetags.icons"],
+            # config isn't an app, so its other tag libraries are registered by name.
+            "libraries": {"stylesheets": "config.templatetags.stylesheets"},
         },
     },
 ]

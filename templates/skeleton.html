@@ -1,4 +1,4 @@
-{% load static tailwind_cli %}<!DOCTYPE html>
+{% load static stylesheets %}<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -12,7 +12,8 @@
       if (saved) document.documentElement.dataset.theme = saved;
     } catch (e) {}
   </script>
-  {% tailwind_css %}
+  {# Versioned by its build, so no browser keeps an old copy (see config/templatetags/stylesheets.py). #}
+  {% tailwind_stylesheet %}
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-base-200 text-base-content antialiased transition-colors duration-300" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>

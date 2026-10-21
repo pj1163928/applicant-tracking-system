@@ -105,4 +105,6 @@ those behaviors with the `/tdd` skill: one failing test (RED on an assertion),
 then just enough code to pass it. Everything else gets the ordinary tests above.
 
 Drag-and-drop (Phase 7) gets a manual browser checklist instead of browser
-automation.
+automation: [MANUAL_CHECKS.md](MANUAL_CHECKS.md). Its view tests
+(`applications/tests/test_drag_and_drop.py`) post the drop form each card renders,
+as the board's script would, and check the same answers as the Move menu.

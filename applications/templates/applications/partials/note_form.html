@@ -1,8 +1,10 @@
 {% comment %}
-The note step of a move, shared by the dialog and the no-JavaScript page.
-Expects `application`, `form`, `to_stage`, `expected_stage`, `requires_note`,
-`reason` and `in_dialog`. It posts back to the move endpoint with `confirmed`,
-so the move is made this time; a required note left blank is refused there.
+The step before a move, shared by the dialog and the no-JavaScript page: a note
+when the move asks for one (`asks_for_note`), otherwise just a confirmation of a
+dropped card. Expects `application`, `form`, `to_stage`, `expected_stage`,
+`requires_note`, `asks_for_note`, `reason` and `in_dialog`. It posts back to the
+move endpoint with `confirmed`, so the move is made this time; a required note
+left blank is refused there.
 {% endcomment %}
 <h2 id="note-dialog-title" class="text-lg font-bold">Move {{ application.candidate.full_name }}</h2>
 <p class="mt-2 flex flex-wrap items-center gap-2 text-sm">
@@ -19,18 +21,20 @@ so the move is made this time; a required note left blank is refused there.
   <input type="hidden" name="to_stage" value="{{ to_stage }}">
   <input type="hidden" name="expected_stage" value="{{ expected_stage }}">
   <input type="hidden" name="confirmed" value="on">
+  {% if asks_for_note %}
   <label class="fieldset-legend" for="{{ form.note.id_for_label }}">
     Note{% if not requires_note %} <span class="font-normal opacity-60">(optional)</span>{% endif %}
   </label>
   {{ form.note }}
   {% for error in form.note.errors %}<p class="text-sm text-error" data-testid="error-note">{{ error }}</p>{% endfor %}
   <p class="text-xs opacity-60">The note is saved with this move in the stage history.</p>
+  {% endif %}
   <div class="modal-action mt-4">
     {% if in_dialog %}
     <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
     {% else %}
     <a href="{% url 'openings:board' application.opening_id %}" class="btn btn-ghost">Cancel</a>
     {% endif %}
-    <button type="submit" class="btn btn-primary" data-testid="note-submit">Move to {{ to_stage.label }}</button>
+    <button type="submit" class="btn btn-primary" data-testid="note-submit"{% if not asks_for_note %} autofocus{% endif %}>Move to {{ to_stage.label }}</button>
   </div>
 </form>

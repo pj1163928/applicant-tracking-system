@@ -6,10 +6,17 @@
   themes: corporate --default, business --prefersdark;
 }
 
-/* Subtle entrance animation for page content: `animate-rise`. Pair it with
-   `motion-reduce:animate-none` so it is skipped for people who turn motion off. */
+/* Animations, each paired in the templates with `motion-reduce:animate-none` so it is
+   skipped for people who turn motion off:
+   - `animate-rise`: a subtle entrance for page content;
+   - `animate-land`: a card that has just been moved arrives with a brief green glow;
+   - `animate-shake`: a card whose move was refused gives a small shake where it stayed;
+   - `animate-gap`: the gap opening where a dragged card would land. */
 @theme {
   --animate-rise: rise 0.4s ease-out both;
+  --animate-land: land 0.8s ease-out backwards;
+  --animate-shake: shake 0.4s ease-in-out;
+  --animate-gap: gap 0.16s ease-out;
 
   @keyframes rise {
     from {
@@ -21,4 +28,130 @@
       transform: none;
     }
   }
+
+  @keyframes land {
+    0% {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.96);
+    }
+    40% {
+      opacity: 1;
+      transform: none;
+      box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-success) 55%, transparent);
+    }
+  }
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: none;
+    }
+    20%,
+    60% {
+      transform: translateX(-5px);
+    }
+    40%,
+    80% {
+      transform: translateX(5px);
+    }
+  }
+
+  @keyframes gap {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+  }
+}
+
+/* Pipeline-board drag-and-drop (the board's script in board.html). While a card is
+   dragged, every other column gets data-drop: "ok" (one step forward), "note" (a note
+   is asked for) or "no" (refused; the server says why), and the column under the
+   pointer also gets data-drop-over: it grows, with a coloured ring and tint. A
+   .drag-float copy of the card follows the pointer, a .drag-slot holds the card's
+   place, and a card-shaped .drop-gap opens where it would land. After a drop the card
+   waits in its new column (.drop-pending) while the dialog asks. These rules are left
+   out of any layer on purpose, so they win over the columns' own utilities. */
+.drop-target {
+  @apply transition-[opacity,outline-color,background-color,box-shadow,scale,filter] duration-200 ease-out motion-reduce:transition-none;
+}
+.drop-target[data-drop="ok"] {
+  @apply outline-2 -outline-offset-2 outline-dashed outline-success;
+}
+.drop-target[data-drop="note"] {
+  @apply outline-2 -outline-offset-2 outline-dashed outline-warning;
+}
+.drop-target[data-drop="no"] {
+  @apply opacity-40 grayscale;
+}
+.drop-target[data-drop][data-drop-over] {
+  @apply opacity-100 grayscale-0 outline-0;
+}
+.drop-target[data-drop="ok"][data-drop-over] {
+  @apply scale-[1.02] bg-success/12 shadow-lg ring-3 ring-success motion-reduce:scale-100;
+}
+.drop-target[data-drop="note"][data-drop-over] {
+  @apply scale-[1.02] bg-warning/12 shadow-lg ring-3 ring-warning motion-reduce:scale-100;
+}
+.drop-target[data-drop="no"][data-drop-over] {
+  @apply bg-error/8 ring-3 ring-error;
+}
+
+.drop-gap {
+  @apply list-none rounded-box border-2 border-dashed border-current bg-current/10 animate-gap motion-reduce:animate-none;
+}
+.drop-gap[data-gap="ok"] {
+  @apply text-success;
+}
+.drop-gap[data-gap="note"] {
+  @apply text-warning;
+}
+.drag-slot {
+  @apply list-none rounded-box border-2 border-dashed border-base-content/20 bg-base-content/5;
+}
+ul:has(> .drop-gap) > [data-empty],
+ul:has(> .drag-slot) > [data-empty] {
+  @apply hidden;
+}
+
+.drag-float {
+  @apply pointer-events-none fixed top-0 left-0 z-50 m-0 shadow-sm transition-[rotate,scale,box-shadow] duration-150 ease-out;
+}
+.drag-float.lifted {
+  @apply scale-[1.04] rotate-2 shadow-2xl motion-reduce:scale-100 motion-reduce:rotate-0;
+}
+.drop-pending {
+  @apply outline-2 outline-offset-2 outline-dashed outline-primary;
+}
+body.card-dragging,
+body.card-dragging * {
+  cursor: grabbing !important;
+}
+body.card-dragging.drop-refused,
+body.card-dragging.drop-refused * {
+  cursor: not-allowed !important;
+}
+
+/* Pipeline-board columns with more than three cards fold to the newest three:
+   column_cards.html marks the rest data-beyond-fold. The board's script sets
+   data-expanded on the column to show them all, with its search box, and marks
+   cards the search doesn't match data-search-miss. */
+[data-drop-stage]:not([data-expanded]) [data-beyond-fold],
+[data-drop-stage]:not([data-expanded]) [data-stage-search-box],
+[data-drop-stage]:not([data-expanded]) [data-when-expanded],
+[data-drop-stage][data-expanded] [data-when-folded],
+[data-search-miss] {
+  @apply hidden;
+}
+[data-drop-stage][data-expanded] [data-fold-button] svg {
+  @apply rotate-180;
+}
+
+/* An empty column's placeholder stretches to match the tallest column in its row
+   (folded columns are at most three cards tall), but never past about three cards. */
+[data-cards]:has(> [data-empty]) {
+  @apply content-stretch;
+}
+[data-empty] {
+  @apply min-h-28 max-h-[22rem];
 }

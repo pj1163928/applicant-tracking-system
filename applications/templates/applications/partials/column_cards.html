@@ -1,6 +1,24 @@
-{% comment %}The cards inside one column's <ul>. Expects `column` and `opening`.{% endcomment %}
+{% comment %}
+The cards inside one column's <ul>, newest first. Expects `column` and `opening`.
+Past `column.fold_at` cards, the rest are marked data-beyond-fold and hidden
+until the column is expanded, and a toggle says how many more there are. An
+empty column shows an icon instead, stretched to match its row (see
+[data-empty] in assets/css/source.css).
+{% endcomment %}
 {% for application in column.applications %}
 {% include "applications/partials/card.html" %}
 {% empty %}
-<li class="rounded-box border border-dashed border-base-300 p-4 text-center text-xs opacity-60" data-testid="column-empty">No one at {{ column.stage.label }}.</li>
+<li class="col-span-full flex flex-col items-center justify-center gap-2 rounded-box border border-dashed border-base-300 p-4 text-center text-xs" data-empty data-testid="column-empty">
+  <span class="flex size-10 items-center justify-center rounded-full bg-base-200 opacity-70">{% icon "inbox" "size-5" %}</span>
+  <span class="opacity-60">No one at {{ column.stage.label }}.</span>
+</li>
 {% endfor %}
+{% if column.folded_count %}
+<li class="col-span-full" data-fold-toggle data-testid="fold-toggle">
+  <button type="button" class="btn btn-ghost btn-sm w-full gap-1.5" aria-expanded="false" data-fold-button>
+    <span data-when-folded>+{{ column.folded_count }} more · Show all</span>
+    <span data-when-expanded>Show fewer</span>
+    {% icon "chevron-down" "size-4 transition-transform motion-reduce:transition-none" %}
+  </button>
+</li>
+{% endif %}

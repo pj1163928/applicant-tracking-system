@@ -4,9 +4,9 @@ CIDM 3312 Project #1. An internal, staff-only web app for tracking job
 applicants from **Applied** to **Hired**. Recruiters, hiring managers and
 interviewers sign in with accounts an Admin creates; candidates never log in.
 
-> **Status:** Phases 1–6 of 14 are complete: project setup, staff login, roles,
+> **Status:** Phases 1–7 of 14 are complete: project setup, staff login, roles,
 > the responsive layout, candidates, sources, job openings, recording applications and
-> the pipeline board with its Move menu. See the [implementation plan](plans/applicant-tracking-system.md)
+> the pipeline board with its Move menu and drag-and-drop. See the [implementation plan](plans/applicant-tracking-system.md)
 > for what comes next.
 
 ## Features
@@ -46,6 +46,20 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
   affected columns, with no page reload. Illegal moves are refused on the server, and a
   card that is out of date can't overwrite a newer stage. Interviewers see the board
   without Move controls.
+- Drag-and-drop: movers can also pick a card up and carry it to another stage, with a
+  mouse or on a touch screen (press and hold first). The card lifts out and travels
+  with the pointer, leaving a dashed slot behind. While it's carried, every stage it may
+  go to is outlined green (one step forward) or amber (asks for a note) and the rest
+  fade; the stage under the pointer grows, with a card-shaped gap where it would land.
+  Every drop is confirmed in a dialog before anything moves (with a note where the move
+  needs one), and the moved card lands with a brief glow. An illegal drop flies home,
+  shakes, and is refused with a message.
+- Busy stages: cards are listed newest first. A stage with more than three applicants
+  shows the newest three and a "+N more · Show all" button; expanding it shows them all
+  with a search box that filters by name as you type. Empty stages show an icon, sized to
+  match the other stages in their row. The board fits any screen without sideways scrolling: the stages
+  flow with arrows between them (stacked on phones), and Rejected and Withdrawn sit
+  apart below the pipeline. A manual checklist is in [docs/MANUAL_CHECKS.md](docs/MANUAL_CHECKS.md).
 - Stage history: every move is kept (from, to, who, when, note and cause), and each
   application's history opens from its card or its row on the candidate and opening pages.
 - A `seed` command that creates one demo user per role, ten sample candidates, six
@@ -56,7 +70,6 @@ interviewers sign in with accounts an Admin creates; candidates never log in.
 **Planned** (see the [PRD](prd/applicant-tracking-system.md))
 
 - Skills on openings.
-- Drag-and-drop on the pipeline board.
 - Closing and reopening openings, with grace periods and candidate emails.
 - Candidate archiving, and handing over a departing staff member's openings.
 
@@ -90,6 +103,20 @@ The first `tailwind runserver` downloads the Tailwind CLI (about 110 MB), so it
 can take a minute before the server starts. On Windows, a **WinError 4551**
 means Smart App Control is blocking that download; the project code is not
 the cause.
+
+**Pages look out of date?** Every page links the stylesheet as
+`/static/css/tailwind.css?v=<build time>`, so a rebuilt stylesheet gets a new
+address and browsers fetch it. If a page still looks old (VS Code's built-in
+browser keeps its cache across sessions):
+
+1. Check that `tailwind runserver` is running. It rebuilds the CSS when you
+   save a template; plain `runserver` doesn't.
+2. Reload the page. In VS Code's Simple Browser, use the reload button in its
+   address bar.
+3. Still old? Open the page in another browser. If that one looks right, the
+   first browser is serving its cached copy from before this fix: open the
+   stylesheet's address in it once (`http://127.0.0.1:8000/static/css/tailwind.css`)
+   and reload that, or close and reopen VS Code.
 
 ### Demo accounts
 

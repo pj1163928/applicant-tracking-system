@@ -20,6 +20,9 @@ from applications.stages import (
 )
 from openings.models import JobOpening
 
+# A column with more cards than this shows only the newest ones until it's expanded.
+FOLD_AT = 3
+
 
 @dataclass
 class Column:
@@ -40,6 +43,26 @@ class Column:
     def count(self) -> int:
         return len(self.applications)
 
+    @property
+    def fold_at(self) -> int:
+        """How many cards show while the column is folded."""
+        return FOLD_AT
+
+    @property
+    def folded_count(self) -> int:
+        """How many cards are hidden behind "+N more" while the column is folded."""
+        return max(0, self.count - FOLD_AT)
+
+    @property
+    def drop_stages(self) -> str:
+        """The Move menu's targets, space-separated, to highlight drop columns while dragging."""
+        return " ".join(target.stage for target in self.targets)
+
+    @property
+    def note_stages(self) -> str:
+        """The targets that ask for a note (required or optional), space-separated."""
+        return " ".join(target.stage for target in self.targets if target.prompts_for_note)
+
 
 def board_columns(
     opening: JobOpening, user: AnyUser, stages: Iterable[str] | None = None
@@ -48,8 +71,8 @@ def board_columns(
 
     Pass ``stages`` to build only those columns, as the move endpoint does for
     the columns a move touched. Users who may not move stages (Interviewers)
-    get columns with no Move targets. Cards are in the order they reached the
-    column.
+    get columns with no Move targets. Cards are newest first (the most recently
+    moved or recorded at the top), so a folded column shows its latest arrivals.
     """
     wanted = [stage for stage in Stage if stages is None or stage in set(stages)]
     may_move = can_move_applications(user)
@@ -58,7 +81,7 @@ def board_columns(
     applications = (
         Application.objects.filter(opening=opening, stage__in=wanted)
         .select_related("candidate", "source")
-        .order_by("updated_at", "pk")
+        .order_by("-updated_at", "-pk")
     )
     for application in applications:
         cards[application.stage].append(application)

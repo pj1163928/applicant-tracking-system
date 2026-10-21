@@ -1,0 +1,578 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — not production code. In-memory only; nothing is saved.
+  Question: when you pick up a card on the pipeline board, how should it travel with
+  the cursor, and how should the box under it show where the card will land?
+    A: a solid card follows the cursor (browser drag-and-drop, its faint ghost hidden)
+    B: the card lifts itself and follows a mouse or finger (pointer events; touch: press and hold)
+    C: today's browser ghost, for comparison (with the new hover highlight)
+  Every variant: the box under the card lights up and a card-shaped gap opens where it
+  would land; the card settles into the gap while a confirmation dialog asks; Cancel
+  sends it home. The stage rules match the app (signed in as a Hiring Manager).
+
+  DECIDED (2026-10-20): variant B, with "light up every allowed stage while dragging" on,
+  and the board's arrow layout kept. The user wanted the card itself to travel with the
+  pointer (the browser's ghost was hard to see), touch support, and every allowed stage
+  lit while dragging. Built into applications/templates/applications/board.html.
+-->
+<html lang="en" data-theme="corporate">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board Drag Feel Prototype</title>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.43/daisyui.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.43/themes.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11/dist/index.global.js"></script>
+<style>
+  body { padding-bottom: 5rem; }
+  #proto-bar, #proto-bar * { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  [data-card] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  body.variant-B [data-card][data-draggable] { cursor: grab; }
+  body.grabbing, body.grabbing * { cursor: grabbing !important; }
+  body.grabbing.over-no, body.grabbing.over-no * { cursor: not-allowed !important; }
+
+  /* Columns while a card is dragged. */
+  .col { transition: scale .15s ease-out, box-shadow .15s ease-out, background-color .15s ease-out, opacity .15s, filter .15s; }
+  body.show-allowed .col[data-allowed="ok"]   { outline: 2px dashed var(--color-success); outline-offset: -2px; }
+  body.show-allowed .col[data-allowed="note"] { outline: 2px dashed var(--color-warning); outline-offset: -2px; }
+  body.show-allowed .col[data-allowed="no"]   { opacity: .45; filter: grayscale(1); }
+  .col[data-hover="ok"], .col[data-hover="note"], .col[data-hover="no"] { opacity: 1 !important; filter: none !important; outline: none !important; }
+  .col[data-hover="ok"]   { scale: 1.02; box-shadow: 0 0 0 3px var(--color-success), 0 12px 30px -12px rgb(0 0 0 / .35); background-color: color-mix(in oklab, var(--color-success) 12%, var(--color-base-100)); }
+  .col[data-hover="note"] { scale: 1.02; box-shadow: 0 0 0 3px var(--color-warning), 0 12px 30px -12px rgb(0 0 0 / .35); background-color: color-mix(in oklab, var(--color-warning) 12%, var(--color-base-100)); }
+  .col[data-hover="no"]   { box-shadow: 0 0 0 3px var(--color-error); background-color: color-mix(in oklab, var(--color-error) 8%, var(--color-base-100)); }
+
+  /* The card-shaped gap where the card would land, and the empty slot it left behind. */
+  .gap { list-style: none; border: 2px dashed currentColor; border-radius: var(--radius-box); background: color-mix(in oklab, currentColor 12%, transparent); animation: gap-open .16s ease-out; }
+  .gap.ok { color: var(--color-success); }
+  .gap.note { color: var(--color-warning); }
+  @keyframes gap-open { from { height: 0; opacity: 0; } }
+  .slot { list-style: none; border: 2px dashed color-mix(in oklab, var(--color-base-content) 22%, transparent); border-radius: var(--radius-box); background: color-mix(in oklab, var(--color-base-content) 4%, transparent); }
+  .slot.closing { transition: height .2s ease-out, opacity .2s, margin .2s; height: 0 !important; opacity: 0; margin-top: -0.5rem; }
+  ul:has(> [data-card]:not([hidden])) > .empty, ul:has(> .gap) > .empty, ul:has(> .slot) > .empty { display: none; }
+
+  /* The picked-up card. */
+  .floating { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; margin: 0;
+              transition: rotate .15s ease-out, scale .15s ease-out, box-shadow .15s ease-out;
+              box-shadow: 0 2px 6px rgb(0 0 0 / .15); }
+  .floating.lifted { rotate: 2deg; scale: 1.04; box-shadow: 0 24px 45px -12px rgb(0 0 0 / .5); }
+  .ghosting { opacity: .35; }
+  /* Prototype panels fade out of the way while a card is dragged. */
+  body.dragging #variant-note, body.dragging #tryit, body.dragging #state { opacity: .1; pointer-events: none; }
+  .pending { outline: 2px dashed var(--color-primary); outline-offset: 2px; }
+  .land { animation: land .9s ease-out; }
+  @keyframes land { 0% { box-shadow: 0 0 0 0 transparent; } 25% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-success) 55%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .shake { animation: shake .4s ease-in-out; }
+  @keyframes shake { 20%, 60% { translate: -6px 0; } 40%, 80% { translate: 6px 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .col, .floating, .slot.closing { transition: none; }
+    .col[data-hover] { scale: 1; }
+    .floating.lifted { rotate: 0deg; scale: 1; }
+    .gap, .land, .shake { animation: none; }
+  }
+</style>
+</head>
+<body class="min-h-screen bg-base-200 text-base-content antialiased">
+<div id="app" class="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8"></div>
+
+<dialog id="dlg" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box" id="dlg-box"></div>
+  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+</dialog>
+
+<!-- Prototype controls: not part of the design -->
+<div id="proto-bar" class="fixed inset-x-0 bottom-0 z-[70] flex flex-wrap items-center gap-x-3 gap-y-1 bg-black px-3 py-2 text-xs text-white">
+  <span class="text-yellow-300">PROTOTYPE</span>
+  <button onclick="step(-1)" class="rounded border border-white/40 px-2">←</button>
+  <span id="variant-label" class="font-bold"></span>
+  <button onclick="step(1)" class="rounded border border-white/40 px-2">→</button>
+  <span class="opacity-50">|</span>
+  <label class="flex items-center gap-1"><input type="checkbox" id="allowed-toggle" onchange="setAllowed(this.checked)"> light up every allowed stage while dragging</label>
+  <span class="opacity-50">|</span>
+  <button onclick="toggleTheme()" class="rounded border border-white/40 px-2">light/dark</button>
+  <button onclick="togglePanel('tryit')" class="rounded border border-white/40 px-2">try this</button>
+  <button onclick="togglePanel('state')" class="rounded border border-white/40 px-2">state</button>
+  <button onclick="reset()" class="rounded border border-white/40 px-2">reset</button>
+</div>
+<div id="variant-note" class="fixed bottom-10 left-3 z-[70] max-w-md rounded bg-black/85 p-2 text-xs text-white"></div>
+<div id="tryit" class="fixed bottom-10 right-3 z-[70] w-80 rounded bg-black/90 p-4 text-xs leading-relaxed text-white">
+  <b class="text-yellow-300">Try this</b>
+  <ol class="ml-4 mt-2 list-decimal space-y-1">
+    <li>Pick up <b>Isaac Brown</b> (Applied) and hover over Screening. Screening lights up green and a gap opens where he'd land. Drop him: he settles into the gap and the dialog asks you to confirm.</li>
+    <li>Click <b>Cancel</b> (or press Escape): he slides home.</li>
+    <li>Drag <b>Ann Lee</b> back to Applied: amber (a note is required).</li>
+    <li>Drag <b>Jade Okafor</b> onto Hired: red, not allowed. Drop: she flies home, shakes, and the reason appears.</li>
+    <li>Drop <b>Gus Patel</b> on the collapsed <b>Rejected</b> bar.</li>
+    <li>Press <b>← →</b> to switch variants and compare how the card travels. Try <b>B</b> on a phone or in DevTools device mode: press and hold a card, then drag.</li>
+    <li>Tick <b>light up every allowed stage</b> to compare with outlining all the allowed stages while you drag.</li>
+  </ol>
+  <button onclick="togglePanel('tryit')" class="mt-2 underline">hide</button>
+</div>
+<div id="state" class="fixed bottom-10 left-3 z-[71] hidden max-h-[60vh] w-[26rem] max-w-[90vw] overflow-auto rounded bg-black/90 p-3 font-mono text-xs text-green-300"></div>
+
+<script>
+/* ================= Data and the stage rules (same as the app) ================= */
+const STAGES = [["applied", "Applied"], ["screening", "Screening"], ["interview", "Interview"], ["final_review", "Final Review"],
+                ["offer", "Offer"], ["hired", "Hired"], ["rejected", "Rejected"], ["withdrawn", "Withdrawn"]];
+const LABEL = Object.fromEntries(STAGES);
+const PIPE = STAGES.slice(0, 6).map(s => s[0]);
+const ACTIVE = PIPE.slice(0, 5);
+const CLOSED = ["rejected", "withdrawn"];
+const SEED = [
+  { id: 1, name: "Isaac Brown", source: "LinkedIn Jobs", applied: "Oct 19", stage: "applied" },
+  { id: 2, name: "Gus Patel", source: "Indeed", applied: "Oct 18", stage: "applied" },
+  { id: 3, name: "Dev Sharma", source: "Company website", applied: "Oct 17", stage: "screening" },
+  { id: 4, name: "Ann Lee", source: "LinkedIn Jobs", applied: "Oct 15", stage: "interview" },
+  { id: 5, name: "Jade Okafor", source: "Career fair", applied: "Oct 14", stage: "final_review" },
+  { id: 6, name: "Hana Kim", source: "Employee referral", applied: "Oct 12", stage: "offer" },
+  { id: 7, name: "Ben Ortiz", source: "LinkedIn Jobs", applied: "Oct 10", stage: "rejected" },
+  { id: 8, name: "Chloe Nguyen", source: "Company website", applied: "Oct 9", stage: "withdrawn" },
+];
+let S = { cards: structuredClone(SEED), log: [], open: new Set() };
+
+function canMove(from, to) {
+  if (from === to || from === "hired") return false;
+  if (CLOSED.includes(from)) return ACTIVE.includes(to);
+  if (to === "hired") return from === "offer";
+  return ACTIVE.includes(to) || CLOSED.includes(to);
+}
+function kind(from, to) {
+  if (CLOSED.includes(to)) return "close";
+  if (CLOSED.includes(from)) return "reopen";
+  const step = PIPE.indexOf(to) - PIPE.indexOf(from);
+  return step === 1 ? "forward" : step > 1 ? "skip" : "back";
+}
+function allowedState(from, to) {
+  if (from === to) return "home";
+  if (!canMove(from, to)) return "no";
+  return kind(from, to) === "forward" ? "ok" : "note";
+}
+function refusal(card, to) {
+  if (card.stage === "hired") return "Hired is final.";
+  if (to === "hired") return `${card.name} can only be moved to Hired from Offer.`;
+  return `A ${LABEL[card.stage].toLowerCase()} application can only be reopened to an active stage, not ${LABEL[to]}.`;
+}
+
+/* ================= Variants ================= */
+const VARIANTS = [
+  { key: "A", name: "Solid card follows the cursor",
+    note: "A: browser drag-and-drop with its faint ghost hidden. A solid, tilted copy of the card sticks to the cursor, and a dashed slot stays where it came from. Mouse only (phones use the Move menu)." },
+  { key: "B", name: "Card lifts itself (mouse and touch)",
+    note: "B: pointer events instead of browser drag-and-drop. Looks like A with a mouse, but also works on phones and tablets: press and hold a card for a moment, then drag. The page scrolls when you drag near the top or bottom edge." },
+  { key: "C", name: "Today's browser ghost (for comparison)",
+    note: "C: what the app does now: the browser's own semi-transparent ghost follows the cursor and the card fades in place. It has the new hover highlight and gap, so you can compare only the travelling card." },
+];
+let V = VARIANTS[Math.max(0, VARIANTS.findIndex(v => v.key === safeGet("drag-variant")))];
+function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+/* ================= Icons (lucide, same as the app) ================= */
+const svg = (paths, cls = "size-4") => `<svg class="${cls} shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const I = {
+  grip: svg('<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>'),
+  history: svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
+  sign: svg('<path d="M12 13v8"/><path d="M12 3v3"/><path d="M18 6a2 2 0 0 1 1.387.56l2.307 2.22a1 1 0 0 1 0 1.44l-2.307 2.22A2 2 0 0 1 18 13H6a2 2 0 0 1-1.387-.56l-2.306-2.22a1 1 0 0 1 0-1.44l2.306-2.22A2 2 0 0 1 6 6z"/>', "size-3.5"),
+  chev: svg('<path d="m6 9 6 6 6-6"/>', "size-3.5"),
+  right: svg('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>', "size-5"),
+  down: svg('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>', "size-5"),
+  back: svg('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>'),
+  kanban: svg('<path d="M6 7v7"/><path d="M11 7v3"/><path d="M16 7v9"/><rect width="18" height="18" x="3" y="3" rx="2"/>'),
+};
+
+/* ================= Rendering (mirrors the app's board) ================= */
+const CARD = "rounded-box border border-base-300 bg-base-100 p-3 shadow-sm";
+const app = document.getElementById("app");
+
+function cardHTML(c) {
+  const movable = c.stage !== "hired";
+  const dragAttrs = !movable ? "" : V.key === "B" ? "data-draggable" : 'draggable="true" data-draggable';
+  return `<li data-card="${c.id}" class="${CARD} transition-[translate,box-shadow] duration-200 ${movable ? "cursor-grab hover:-translate-y-0.5 hover:shadow-md" : ""}" ${dragAttrs}>
+    <div class="flex items-start justify-between gap-2">
+      <span class="flex min-w-0 items-start gap-1">${movable ? `<span class="-ml-1 mt-0.5 opacity-40">${I.grip}</span>` : ""}<span class="font-semibold">${c.name}</span></span>
+      <span class="opacity-50">${I.history}</span>
+    </div>
+    <p class="mt-1 flex flex-wrap items-center gap-x-2 text-xs opacity-70"><span class="inline-flex items-center gap-1">${I.sign} ${c.source}</span><span>Applied ${c.applied}</span></p>
+    ${movable ? `<div class="btn btn-xs btn-outline pointer-events-none mt-2 w-full justify-between">Move ${I.chev}</div>` : ""}
+  </li>`;
+}
+function cardsHTML(stage) {
+  return S.cards.filter(c => c.stage === stage).map(cardHTML).join("") +
+    `<li class="empty rounded-box border border-dashed border-base-300 p-4 text-center text-xs opacity-60">No one at ${LABEL[stage]}.</li>`;
+}
+const count = stage => S.cards.filter(c => c.stage === stage).length;
+
+function columnHTML(stage) {
+  const hired = stage === "hired";
+  return `<section data-col="${stage}" class="col flex min-w-0 flex-col rounded-box border border-base-300 ${hired ? "bg-success/5" : "bg-base-100/60"}">
+    <h2 class="flex items-center justify-between px-3 py-2 text-sm font-semibold">${LABEL[stage]}
+      <span data-count="${stage}" class="badge badge-sm ${hired ? "badge-success" : "badge-ghost"}">${count(stage)}</span></h2>
+    <ul data-list="${stage}" class="grid flex-1 content-start gap-2 p-2 pt-0 sm:max-md:grid-cols-2">${cardsHTML(stage)}</ul>
+  </section>`;
+}
+function closedHTML(stage) {
+  return `<details data-col="${stage}" class="col group min-w-0 rounded-box border border-base-300 bg-base-300/40" ${S.open.has(stage) ? "open" : ""}>
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-box px-3 py-2 hover:bg-base-300/60 [&::-webkit-details-marker]:hidden">
+      <span class="flex items-center gap-2 text-sm font-semibold"><span class="-rotate-90 transition-transform group-open:rotate-0">${I.chev}</span>${LABEL[stage]}</span>
+      <span data-count="${stage}" class="badge badge-sm badge-neutral">${count(stage)}</span>
+    </summary>
+    <ul data-list="${stage}" class="grid gap-2 p-2 pt-0 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">${cardsHTML(stage)}</ul>
+  </details>`;
+}
+function arrowHTML(wraps) {
+  if (!wraps) return `<div class="flex justify-center text-base-content/30 md:pt-2" aria-hidden="true"><span class="md:hidden">${I.down}</span><span class="hidden md:block">${I.right}</span></div>`;
+  return `<div class="flex justify-center text-base-content/30 md:col-span-full md:block md:px-[16.67%]" aria-hidden="true">
+    <span class="md:hidden">${I.down}</span>
+    <svg class="hidden h-4 w-full overflow-visible md:block" viewBox="0 0 100 16" preserveAspectRatio="none" fill="none"><path d="M100 0V8H0V16" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <span class="-ml-2.5 -mt-1 hidden w-5 md:block">${I.down}</span></div>`;
+}
+
+function render() {
+  document.body.className = `min-h-screen bg-base-200 text-base-content antialiased variant-${V.key}` + (showAllowed ? " show-allowed" : "");
+  const pipeline = PIPE.map((s, i) => columnHTML(s) + (i < PIPE.length - 1 ? arrowHTML((i + 1) % 3 === 0) : "")).join("");
+  app.innerHTML = `
+    <span class="btn btn-ghost btn-sm -ml-2 gap-2">${I.back} Backend Developer</span>
+    <header class="mt-4">
+      <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">${I.kanban} Pipeline board</p>
+      <div class="mt-1 flex flex-wrap items-center gap-2"><h1 class="text-2xl font-bold sm:text-3xl">Backend Developer</h1><span class="badge badge-success badge-soft">Open</span></div>
+      <p class="mt-1 text-sm opacity-70">Engineering · Remote · signed in as Morgan Patel (Hiring Manager)</p>
+    </header>
+    <p class="mt-4 text-sm opacity-70">Drag a card to another stage, or use <strong>Move</strong> on a card.</p>
+    <div id="board-status" role="status" aria-live="polite"></div>
+    <div id="board" class="mt-4">
+      <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">${pipeline}</div>
+      <section class="mt-6">
+        <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">Out of the pipeline</h2>
+        <div class="mt-2 grid gap-3 md:grid-cols-2">${CLOSED.map(closedHTML).join("")}</div>
+      </section>
+    </div>`;
+  document.querySelectorAll("details[data-col]").forEach(d => d.addEventListener("toggle", () => {
+    d.open ? S.open.add(d.dataset.col) : S.open.delete(d.dataset.col);
+  }));
+  document.getElementById("variant-label").textContent = `${V.key}: ${V.name}`;
+  document.getElementById("variant-note").textContent = V.note;
+  showState();
+}
+function updateCounts() {
+  STAGES.forEach(([s]) => {
+    const n = document.querySelectorAll(`[data-list="${s}"] > [data-card]:not([hidden])`).length;
+    document.querySelector(`[data-count="${s}"]`).textContent = n;
+  });
+}
+function status(message, kind) {
+  document.getElementById("board-status").innerHTML =
+    `<div role="alert" class="alert alert-soft mt-4 text-sm ${kind === "error" ? "alert-error" : "alert-success"}"><span>${message}</span></div>`;
+}
+function logEvent(text) { S.log.unshift(`${new Date().toLocaleTimeString()}  ${text}`); showState(); }
+function showState() {
+  const rows = STAGES.map(([s, l]) => `${l.padEnd(13)} ${S.cards.filter(c => c.stage === s).map(c => c.name).join(", ") || "—"}`).join("\n");
+  document.getElementById("state").innerHTML = `<b class="text-yellow-300">Where everyone is</b><pre class="mt-1 whitespace-pre-wrap">${rows}</pre>` +
+    `<b class="text-yellow-300">Events</b><pre class="mt-1 whitespace-pre-wrap">${S.log.join("\n") || "—"}</pre>`;
+}
+
+/* ================= The drag itself ================= */
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const DURATION = reduceMotion ? 0 : 260;
+const BLANK = new Image();
+BLANK.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+let D = null; // the drag in progress
+let busy = false; // a dialog or animation is running
+
+function startDrag(cardEl, x, y) {
+  const card = S.cards.find(c => c.id === +cardEl.dataset.card);
+  const r = cardEl.getBoundingClientRect();
+  D = { card, cardEl, origin: card.stage, offX: x - r.left, offY: y - r.top, w: r.width, h: r.height, x, y, hover: null, state: null };
+  document.body.classList.add("dragging");
+  document.querySelectorAll("[data-col]").forEach(col => col.dataset.allowed = allowedState(D.origin, col.dataset.col));
+  logEvent(`picked up ${card.name} (${LABEL[card.stage]})`);
+  if (V.key === "C") {
+    setTimeout(() => cardEl.classList.add("ghosting"));
+    return;
+  }
+  // A and B: a solid copy follows the pointer, and a dashed slot holds the card's place.
+  D.float = makeFloat(cardEl, r);
+  requestAnimationFrame(() => D && D.float && D.float.classList.add("lifted"));
+  // Hide the card a moment later: hiding it during dragstart would cancel a browser drag.
+  setTimeout(() => {
+    if (!D || D.cardEl !== cardEl) return;
+    D.slot = makeSlot(r.height);
+    cardEl.before(D.slot);
+    cardEl.hidden = true;
+  });
+}
+function makeFloat(cardEl, r) {
+  const float = cardEl.cloneNode(true);
+  float.className = `${CARD} floating`;
+  float.removeAttribute("data-card");
+  float.style.width = `${r.width}px`;
+  float.style.transform = `translate(${r.left}px, ${r.top}px)`;
+  document.body.append(float);
+  return float;
+}
+function makeSlot(height) {
+  const slot = document.createElement("li");
+  slot.className = "slot";
+  slot.style.height = `${height}px`;
+  return slot;
+}
+function moveTo(x, y) {
+  if (!D) return;
+  D.x = x; D.y = y;
+  if (D.float) D.float.style.transform = `translate(${x - D.offX}px, ${y - D.offY}px)`;
+  hitTest();
+}
+function hitTest() {
+  // The first thing under the pointer that's part of the board, even below a floating panel.
+  const el = document.elementsFromPoint(D.x, D.y).find(e => e.closest("#board"));
+  if (!el) return setHover(null);
+  const col = el.closest("[data-col]");
+  if (col) setHover(col); // between columns, keep the last one (stops flicker as gaps open)
+}
+function setHover(col) {
+  if (col && col.dataset.col === D.origin) col = null;
+  if (col === D.hover) return;
+  if (D.hover) delete D.hover.dataset.hover;
+  if (D.gap) D.gap.remove();
+  D.hover = col; D.gap = null; D.state = null;
+  document.body.classList.remove("over-no");
+  if (!col) return;
+  D.state = allowedState(D.origin, col.dataset.col);
+  col.dataset.hover = D.state;
+  document.body.classList.toggle("over-no", D.state === "no");
+  const list = col.querySelector("[data-list]");
+  if (D.state !== "no" && list.getClientRects().length) { // no gap inside a collapsed panel
+    D.gap = document.createElement("li");
+    D.gap.className = `gap ${D.state}`;
+    D.gap.style.height = `${D.h}px`;
+    list.append(D.gap);
+  }
+}
+function endVisuals() {
+  document.querySelectorAll("[data-col]").forEach(col => { delete col.dataset.allowed; delete col.dataset.hover; });
+  document.body.classList.remove("over-no", "grabbing", "dragging");
+}
+
+// The pointer let go: over a column it may move to, over one it may not, or nowhere.
+function finish(dropped) {
+  if (!D) return;
+  const d = D; D = null;
+  const col = d.hover, state = d.state;
+  endVisuals();
+  if (!col || (!dropped && state !== "no")) {
+    if (d.gap) d.gap.remove();
+    logEvent(`put ${d.card.name} back`);
+    return goHome(d);
+  }
+  if (state === "no") {
+    const message = refusal(d.card, col.dataset.col);
+    logEvent(`refused: ${message}`);
+    return goHome(d, () => { d.cardEl.classList.add("shake"); status(message, "error"); });
+  }
+  settle(d, col);
+}
+
+// Fly the floating copy (or the card itself) to a rectangle, then run `done`.
+function flyTo(el, rect, done, { shrink = false } = {}) {
+  const from = el.style.transform;
+  const to = `translate(${rect.left}px, ${rect.top}px)`;
+  el.classList.remove("lifted");
+  const frames = shrink ? [{ transform: from }, { transform: to, opacity: 0, scale: 0.4 }] : [{ transform: from }, { transform: to }];
+  el.animate(frames, { duration: DURATION, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" }).finished.then(done);
+}
+// Move a card element in the DOM and animate it from where it was to where it lands.
+function slide(el, mutate, fromRect) {
+  const first = fromRect || el.getBoundingClientRect();
+  mutate();
+  const last = el.getBoundingClientRect();
+  if (!last.width || reduceMotion) return;
+  el.animate([{ transform: `translate(${first.left - last.left}px, ${first.top - last.top}px)` }, { transform: "none" }],
+             { duration: DURATION, easing: "cubic-bezier(.2,.8,.2,1)" });
+}
+
+function goHome(d, after) {
+  const cleanup = () => {
+    d.cardEl.hidden = false;
+    d.cardEl.classList.remove("ghosting", "pending");
+    if (d.slot) d.slot.replaceWith(d.cardEl);
+    after && after();
+  };
+  if (d.float) {
+    const target = (d.slot || d.cardEl).getBoundingClientRect();
+    flyTo(d.float, target, () => { d.float.remove(); cleanup(); });
+  } else cleanup();
+}
+
+// Legal drop: the card settles into the gap (or into the collapsed panel), then the dialog asks.
+function settle(d, col) {
+  busy = true;
+  const to = col.dataset.col;
+  const list = col.querySelector("[data-list]");
+  const place = () => {
+    if (!d.slot) { d.slot = makeSlot(d.h); d.cardEl.before(d.slot); }
+    if (d.gap) d.gap.replaceWith(d.cardEl); else list.append(d.cardEl);
+    d.cardEl.hidden = false;
+    d.cardEl.classList.remove("ghosting");
+    d.cardEl.classList.add("pending");
+  };
+  if (d.float) {
+    const target = d.gap ? d.gap.getBoundingClientRect() : col.getBoundingClientRect();
+    flyTo(d.float, target, () => { d.float.remove(); place(); ask(d, to); }, { shrink: !d.gap });
+  } else {
+    slide(d.cardEl, place, d.gap ? undefined : col.getBoundingClientRect());
+    ask(d, to);
+  }
+}
+
+/* ================= The confirmation dialog ================= */
+const dlg = document.getElementById("dlg");
+function ask(d, to) {
+  const from = d.origin, k = kind(from, to), name = d.card.name;
+  const skipped = PIPE.slice(PIPE.indexOf(from) + 1, PIPE.indexOf(to)).map(s => LABEL[s]);
+  const reason = {
+    forward: `This moves them one step forward, from ${LABEL[from]} to ${LABEL[to]}.`,
+    skip: `This skips ${skipped.join(" and ")}. Say why it's being expedited.`,
+    back: `This moves ${name} back. Say why.`,
+    reopen: `This reopens a ${LABEL[from].toLowerCase()} application. Say why.`,
+    close: "Add a reason if it helps. It's kept in the stage history.",
+  }[k];
+  const needsNote = ["skip", "back", "reopen"].includes(k), asksNote = needsNote || k === "close";
+  document.getElementById("dlg-box").innerHTML = `
+    <h2 class="text-lg font-bold">Move ${name}</h2>
+    <p class="mt-2 flex items-center gap-2 text-sm"><span class="badge badge-sm badge-soft badge-primary">${LABEL[from]}</span>→<span class="badge badge-sm badge-primary">${LABEL[to]}</span></p>
+    <p class="mt-3 text-sm">You dropped ${name} on ${LABEL[to]}. ${reason}</p>
+    ${asksNote ? `<label class="fieldset-legend mt-2" for="note">Note${needsNote ? "" : ' <span class="font-normal opacity-60">(optional)</span>'}</label>
+      <textarea id="note" rows="3" class="textarea w-full" ${needsNote ? 'placeholder="Required"' : ""}></textarea>
+      <p id="note-error" class="hidden text-sm text-error">Add a note to make this move.</p>` : ""}
+    <div class="modal-action"><button class="btn btn-ghost" id="dlg-cancel">Cancel</button><button class="btn btn-primary" id="dlg-ok">Move to ${LABEL[to]}</button></div>`;
+  let decided = false;
+  const decide = ok => {
+    if (decided) return;
+    if (ok && needsNote && !document.getElementById("note").value.trim()) {
+      document.getElementById("note-error").classList.remove("hidden");
+      return document.getElementById("note").focus();
+    }
+    decided = true;
+    if (dlg.open) dlg.close();
+    ok ? commit(d, to) : cancel(d);
+  };
+  document.getElementById("dlg-ok").onclick = () => decide(true);
+  document.getElementById("dlg-cancel").onclick = () => decide(false);
+  dlg.onclose = () => decide(false); // Escape or a click on the backdrop
+  dlg.showModal();
+  (asksNote ? document.getElementById("note") : document.getElementById("dlg-ok")).focus();
+}
+function commit(d, to) {
+  const from = d.card.stage;
+  d.card.stage = to;
+  d.cardEl.classList.remove("pending");
+  d.cardEl.classList.add("land");
+  d.slot.classList.add("closing");
+  setTimeout(() => d.slot.remove(), reduceMotion ? 0 : 220);
+  updateCounts();
+  status(`Moved ${d.card.name} from ${LABEL[from]} to ${LABEL[to]}.`, "success");
+  logEvent(`moved ${d.card.name}: ${LABEL[from]} → ${LABEL[to]}`);
+  busy = false;
+}
+function cancel(d) {
+  const shown = d.cardEl.getBoundingClientRect().width ? undefined : d.cardEl.closest("[data-col]").getBoundingClientRect();
+  slide(d.cardEl, () => { d.slot.replaceWith(d.cardEl); d.cardEl.classList.remove("pending"); }, shown);
+  logEvent(`cancelled: ${d.card.name} stays at ${LABEL[d.origin]}`);
+  busy = false;
+}
+
+/* ================= Wiring: browser drag-and-drop (A, C) ================= */
+document.addEventListener("dragstart", e => {
+  const el = e.target.closest && e.target.closest("[data-card][draggable=true]");
+  if (!el || busy || V.key === "B") return;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", el.dataset.card);
+  if (V.key === "A") e.dataTransfer.setDragImage(BLANK, 0, 0);
+  startDrag(el, e.clientX, e.clientY);
+});
+document.addEventListener("dragover", e => {
+  if (!D || V.key === "B") return;
+  e.preventDefault();
+  moveTo(e.clientX, e.clientY);
+  e.dataTransfer.dropEffect = D.state === "no" ? "none" : "move";
+});
+document.addEventListener("drop", e => {
+  if (!D || V.key === "B") return;
+  e.preventDefault();
+  finish(true);
+});
+document.addEventListener("dragend", () => { if (D && V.key !== "B") finish(false); });
+
+/* ================= Wiring: pointer events (B) ================= */
+document.addEventListener("pointerdown", e => {
+  if (V.key !== "B" || busy || D || e.button > 0) return;
+  const el = e.target.closest("[data-card][data-draggable]");
+  if (!el) return;
+  const id = e.pointerId, touch = e.pointerType !== "mouse";
+  let sx = e.clientX, sy = e.clientY, lx = sx, ly = sy, started = false, timer = null;
+  const begin = (x, y) => {
+    started = true; clearTimeout(timer);
+    document.body.classList.add("grabbing");
+    startDrag(el, x, y);
+    autoScroll();
+  };
+  const stop = () => {
+    clearTimeout(timer);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onCancel);
+  };
+  const onMove = ev => {
+    if (ev.pointerId !== id) return;
+    lx = ev.clientX; ly = ev.clientY;
+    if (started) return moveTo(lx, ly);
+    const dist = Math.hypot(lx - sx, ly - sy);
+    if (!touch && dist > 4) begin(lx, ly);
+    else if (touch && dist > 10) stop(); // moved before the hold finished: it's a scroll
+  };
+  const onUp = ev => { if (ev.pointerId !== id) return; stop(); if (started) finish(true); };
+  const onCancel = ev => { if (ev.pointerId !== id) return; stop(); if (started) finish(false); };
+  if (touch) timer = setTimeout(() => { begin(lx, ly); navigator.vibrate && navigator.vibrate(15); }, 280);
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onCancel);
+});
+// Once a touch drag has started, stop the page from scrolling under the finger.
+document.addEventListener("touchmove", e => { if (D && V.key === "B") e.preventDefault(); }, { passive: false });
+document.addEventListener("contextmenu", e => { if (V.key === "B" && e.target.closest("[data-card]")) e.preventDefault(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && D && V.key === "B") finish(false); });
+function autoScroll() {
+  if (!D) return;
+  const edge = 70;
+  let dy = 0;
+  if (D.y < edge) dy = -(edge - D.y) / 3;
+  else if (D.y > innerHeight - edge) dy = (D.y - (innerHeight - edge)) / 3;
+  if (dy) { scrollBy(0, dy); hitTest(); }
+  requestAnimationFrame(autoScroll);
+}
+
+/* ================= Prototype controls ================= */
+let showAllowed = safeGet("drag-show-allowed") === "1";
+document.getElementById("allowed-toggle").checked = showAllowed;
+function setAllowed(on) { showAllowed = on; safeSet("drag-show-allowed", on ? "1" : "0"); document.body.classList.toggle("show-allowed", on); }
+function step(n) {
+  if (D || busy) return;
+  V = VARIANTS[(VARIANTS.indexOf(V) + n + VARIANTS.length) % VARIANTS.length];
+  safeSet("drag-variant", V.key);
+  render();
+}
+function toggleTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === "business" ? "corporate" : "business";
+}
+function togglePanel(id) { document.getElementById(id).classList.toggle("hidden"); }
+function reset() { if (D || busy) return; S = { cards: structuredClone(SEED), log: [], open: new Set() }; render(); }
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea") || dlg.open) return;
+  if (e.key === "ArrowLeft") step(-1);
+  if (e.key === "ArrowRight") step(1);
+});
+document.addEventListener("animationend", e => e.target.classList && e.target.classList.remove("land", "shake"));
+render();
+</script>
+</body>
+</html>

@@ -158,6 +158,7 @@ class MoveForm(DaisyUIFormMixin, forms.Form):
     note is required. ``expected_stage`` is the stage the card showed, so a
     stale card can't overwrite a newer stage. ``confirmed`` is set by the note
     dialog, so a move that asks for a note isn't made before the user has seen it.
+    ``dropped`` comes from a drag-and-drop, so even a routine move is confirmed first.
     """
 
     CLASSES = {"note": ("textarea w-full", "textarea-error")}
@@ -184,3 +185,4 @@ class MoveForm(DaisyUIFormMixin, forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
     )
     confirmed = forms.BooleanField(required=False, widget=forms.HiddenInput)
+    dropped = forms.BooleanField(required=False, widget=forms.HiddenInput)

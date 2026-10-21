@@ -1,27 +1,37 @@
 {% comment %}
-One stage column. Expects `column` and `opening`. Rejected and Withdrawn are a
-collapsed <details> showing only a count; the rest are always open. The count
-(#count-<stage>) and the cards (#cards-<stage>) are what a move swaps, so an
-expanded column stays expanded.
+One stage column. Expects `column` and `opening`. Pipeline stages are sections
+in the board's grid. Rejected and Withdrawn sit apart, below it, each a
+collapsed <details> showing only a count. The count (#count-<stage>) and the
+cards (#cards-<stage>) are what a move swaps, so an expanded panel stays
+expanded. `data-drop-stage` makes the column a drag-and-drop target, and
+`drop-target` styles it while a card is dragged (see assets/css/source.css).
+A column with more than three cards folds to the newest three; the board's
+script sets data-expanded on the column to show the rest and its search box.
 {% endcomment %}
 {% if column.collapsible %}
-<details class="group w-14 shrink-0 rounded-box border border-base-300 bg-base-300/40 open:w-72" data-testid="column-{{ column.stage }}">
-  <summary class="flex cursor-pointer list-none flex-col items-center gap-2 rounded-box p-2 transition-colors hover:bg-base-300/60 group-open:flex-row group-open:justify-between group-open:px-3 motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
+<details class="drop-target group min-w-0 rounded-box border border-base-300 bg-base-300/40" data-drop-stage="{{ column.stage }}" data-testid="column-{{ column.stage }}">
+  <summary class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-box px-3 py-2 transition-colors hover:bg-base-300/60 motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
            aria-label="{{ column.stage.label }}: show or hide">
-    <span class="text-sm font-semibold [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb]">{{ column.stage.label }}</span>
+    <span class="flex items-center gap-2 text-sm font-semibold">
+      {% icon "chevron-down" "size-4 -rotate-90 transition-transform group-open:rotate-0 motion-reduce:transition-none" %}
+      {{ column.stage.label }}
+    </span>
     <span id="count-{{ column.stage }}" class="badge badge-sm badge-neutral" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
   </summary>
-  <ul id="cards-{{ column.stage }}" class="grid gap-2 p-2 pt-0">
+  {% include "applications/partials/stage_search.html" %}
+  <ul id="cards-{{ column.stage }}" class="grid gap-2 p-2 pt-0 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2" data-cards>
     {% include "applications/partials/column_cards.html" %}
   </ul>
 </details>
 {% else %}
-<section class="w-72 shrink-0 rounded-box border border-base-300 {% if column.stage == 'hired' %}bg-success/5{% else %}bg-base-100/60{% endif %}" aria-labelledby="column-{{ column.stage }}-heading" data-testid="column-{{ column.stage }}">
+<section class="drop-target flex min-w-0 flex-col rounded-box border border-base-300 {% if column.stage == 'hired' %}bg-success/5{% else %}bg-base-100/60{% endif %}" aria-labelledby="column-{{ column.stage }}-heading" data-drop-stage="{{ column.stage }}" data-testid="column-{{ column.stage }}">
   <h2 id="column-{{ column.stage }}-heading" class="flex items-center justify-between px-3 py-2 text-sm font-semibold">
     {{ column.stage.label }}
     <span id="count-{{ column.stage }}" class="badge badge-sm {% if column.stage == 'hired' %}badge-success{% else %}badge-ghost{% endif %}" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
   </h2>
-  <ul id="cards-{{ column.stage }}" class="grid gap-2 p-2 pt-0">
+  {% include "applications/partials/stage_search.html" %}
+  {# Full width on phones, so small tablets fit two cards side by side. #}
+  <ul id="cards-{{ column.stage }}" class="grid flex-1 content-start gap-2 p-2 pt-0 sm:max-md:grid-cols-2" data-cards>
     {% include "applications/partials/column_cards.html" %}
   </ul>
 </section>

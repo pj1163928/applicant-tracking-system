@@ -28,6 +28,172 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-20 — Applicant Tracking System: Phase 7/14, Drag-and-drop on the board
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 7`.
+2. Ok go ahead and build it: also I would like to make sure the the pipeline board fits well on any screen size and does not have to used a horizontal scroll bar. And have the rejected and withdrawn fields seperately. Essentially have arrows pointing to each of the phases, but keep the layout in a way that uses the pages space rather than horizontal scrolling.
+3. Ok drag and drop functions as intended, however in terms of looks I feel that it could look more responsive like having animations when hovering an employee card over, also I notice that a user may accidentally make a mistake if theey do choose to drag and drop, can we add a confirmation message stating what the user is doing rather than just immediately moving their employee card.
+4. Ok I beleive you misunderstood me when I mentioned how the move behavior works so far I see no visible change when I move and employee card to another box. I also feel that instructions for every box: Release to move hereRelease to move here, with a noteNot allowed here Not necessary. I wanted to see the actual area that it was being hovered over in be highlighted giveing the person a visual cue about how it was being dropped into the menu. Also when I pick up a card I would like to to travvel with the cursor, it feels like now I am picking it up and carrying a hard to see ghost copy of that employee card and I dont really know whats going on I hust have to guess. Please ask me questions if you need further clarification about what design I intend to go for before implementation if required.
+5. (Answer to "When you pick up a card, how should it travel with your cursor?") Show me a prototype first.
+6. Ok I like the layout with the way you positioned the arrows, I prefer the card lifting iteself mouse and touch and light up every allowed stage while dragging, go ahead and implement this design into the final product
+7. Ok I beleive I found the sourec of the confusion my VSCode browser seems to be loading old CSS data as when I open it in another browser it looks different. I am not sure of this but would potentially like some troubleshooting on this, additionally I would like to have the menus contract and expand automatically when the threshold of users in a board section is higher than 3, to where it will give the user an option to expand the cards view and search for applicants in that cards view. One other thing is some Iconography for No one at Screening would be nice rather than just an empty card section. This should expand dynamicall based on the other cards height at most 3.
+8. (Answer to "When a stage has more than 3 applicants … how should you see the rest and search them?") Expand in place (Recommended).
+9. (Answer to "While a busy stage is folded to 3 cards, which 3 should it show?") Newest arrivals first (Recommended).
+
+### Summary
+
+- **Outcome:** Drag-and-drop on the pipeline board, with a mouse or by touch, plus a board layout with no sideways scrolling.
+  - **Picking up:** Admins, Recruiters and Hiring Managers press a card and move the mouse, or press and hold it on a touch screen. The card lifts out (tilted, with a deep shadow) and travels with the pointer, leaving a dashed slot behind. It's built on pointer events, not the browser's drag-and-drop, so there is no faint ghost, and it works on phones. The page scrolls when the card nears the top or bottom edge.
+  - **While carrying:**
+    - Every other stage lights up from the card's own Move targets: a green dashed outline (one step forward), amber (a note is asked for) or faded grey (refused).
+    - The stage under the pointer grows slightly and gets a solid ring and tint in its colour (red when refused).
+    - A card-shaped gap opens where the card would land.
+    - There's no text inside the columns.
+  - **Dropping:**
+    - A legal drop settles the card into the gap, outlined, and posts the card's hidden drop form (with `dropped`) to `applications:move`, the endpoint the Move menu uses.
+    - The server answers with a dialog before anything moves. A one-step move gets a plain confirmation ("You dropped … on Screening. This moves them one step forward, from Applied to Screening."); moves that need a note get the note dialog.
+    - Cancel, Escape or the backdrop slides the card back home. Confirming swaps in the redrawn columns, and the moved card lands with a green glow.
+    - A drop on a faded stage flies the card home and is posted anyway, so the server refuses it with its message and the card shakes.
+    - Dropping back home, or pressing Escape mid-drag, just flies the card home.
+  - **Unchanged:** the Move menu's one-step moves still happen at once.
+  - **Who can drag:** only cards with Move targets can be picked up. Interviewers, users with no role and Hired cards have no grip, no drop form and nothing to pick up, and a hand-made drop POST from them is refused with 403.
+  - **Layout (from prompt 2):** the six pipeline stages sit in a grid with an arrow between each. Phones stack them with ↓ arrows. From `md` up there are two rows of three with → arrows, and a connector from Interview down to Final Review. Rejected and Withdrawn have their own "Out of the pipeline" area below, still collapsed to counts that expand, and they take drops while collapsed.
+  - **Busy and empty stages (prompts 7–9):**
+    - Cards are newest first, so a moved card goes to the top and the drop gap opens there.
+    - A stage with more than three cards (Rejected and Withdrawn included) shows the newest three and a "+N more · Show all" button.
+    - Expanding shows every card, with a search box that filters by name as you type and says when nobody matches. "Show fewer" folds it again and clears the search.
+    - The expanded state and the search text survive moves.
+    - An empty stage shows an inbox icon and "No one at …", in a box that stretches to match the other stages in its row, capped at about three cards' height.
+  - **Stale CSS (prompt 7):**
+    - Diagnosis: in development the stylesheet was served at a fixed address with no caching instructions, so browsers could keep an old copy. VS Code's built-in browser does this across sessions and has no reliable hard reload.
+    - Fix: `skeleton.html` now links it as `tailwind.css?v=<file modification time>`, so every rebuild gets a new address.
+    - README has troubleshooting steps for a browser that cached the stylesheet before the fix.
+  - **Checks:** 520 tests pass (33 new this session); `ruff check` and `ruff format` are clean. No migrations, no seed changes. Four of the five Phase 7 criteria are ticked. The last ("checklist followed") waits for the user to run the updated `docs/MANUAL_CHECKS.md` with a real mouse and a phone.
+- **Changes:**
+  - `applications/templates/applications/board.html`:
+    - the pipeline grid, the separate closed-stages section, and a `data-drop-area` wrapper around both;
+    - the legend: "Drag a card to another stage (on a touch screen, press and hold it first), or use Move on a card", plus a line on what the colours mean;
+    - the pointer-events drag script: lift, follow and autoscroll, the lit stages, hovered stage and gap, the waiting card, the dialog close and swap handling, and touch press-and-hold with scroll and context-menu handling.
+  - `applications/templates/applications/partials/card.html`: for movers, `data-move-targets`, `data-note-targets`, a grip icon, `select-none`, `draggable="false"` on its links, and the hidden drop form (CSRF token, `expected_stage`, an empty `to_stage`, `dropped`). Draggable cards lift on hover. After a move, the moved card has `animate-land` and a refused one `animate-shake`.
+  - `applications/templates/applications/partials/column.html`: `data-drop-stage` and `drop-target` on every column, with fluid widths. Rejected and Withdrawn are full-width `<details>` bars. `column_cards.html`: a `data-empty` hook on the "No one at …" line.
+  - `applications/templates/applications/partials/stage_arrow.html` (new): the arrow between stages, and the row-wrapping connector.
+  - `applications/board.py`: `Column.drop_stages` and `Column.note_stages`, from the same `targets` as the Move menu.
+  - `applications/views.py`:
+    - `board_context()` splits the columns into `pipeline` and `closed`;
+    - `ask_first()` (was `ask_for_note()`) also builds a dropped move's plain confirmation;
+    - `post()` asks first when `dropped` is set;
+    - `board_update()` passes `landed_pk` and `bounced_pk`.
+  - `applications/forms.py`: `MoveForm.dropped`.
+  - `applications/templates/applications/partials/note_form.html`: the note field only when the move asks for one; otherwise the Move button gets `autofocus`.
+  - `assets/css/source.css`: the drag styles (`.drop-target[data-drop…]` with `[data-drop-over]`, `.drag-float`, `.drag-slot`, `.drop-gap`, `.drop-pending`, and the grabbing and not-allowed cursors), and the `land`, `shake` and `gap` keyframes next to `rise`. All have reduced-motion fallbacks.
+  - `templates/icons/`: `arrow-right`, `arrow-down` and `grip-vertical`, from lucide-static v1.49.0.
+  - Busy and empty stages (prompts 7–9):
+    - `applications/board.py`: `FOLD_AT = 3`, `Column.fold_at` and `Column.folded_count`, and cards newest first (`-updated_at`, `-pk`).
+    - `partials/column_cards.html`: `data-beyond-fold` past the third card, the "+N more · Show all" / "Show fewer" toggle, and the icon empty state with `data-empty`.
+    - `partials/card.html`: `data-name`, for the search.
+    - `partials/stage_search.html` (new): the search box and no-match line, in both column types outside the swapped `<ul>` (now marked `data-cards`).
+    - `board.html`:
+      - `syncColumn()` and `filterColumn()`, the toggle and search listeners, and a re-sync after every HTMX settle;
+      - the drop gap and a dropped card now go to the top of the list.
+    - `assets/css/source.css`: the fold, search and no-match hiding rules, and the empty box's stretch with its `max-h-[22rem]` cap.
+  - Stale CSS (prompt 7): `config/templatetags/stylesheets.py` (new, `{% tailwind_stylesheet %}`), registered by name in `config/settings.py` `TEMPLATES`, and used in `templates/skeleton.html` instead of `{% tailwind_css %}`.
+  - `config/tests/test_stylesheets.py` (new, 4 tests) and `applications/tests/test_board_folding.py` (new, 10 tests).
+  - `applications/tests/test_drag_and_drop.py` (new, 19 tests), with `drop()` and `submit_dialog()` helpers. `applications/tests/conftest.py`: the `app` fixture moved here from `test_board.py`. `test_board.py`: the collapse test checks for two closed `<details>`.
+  - `prototypes/board-drag-feel.html` (new): the throwaway prototype (A: solid copy on browser drag-and-drop, B: the card lifts itself with pointer events, C: today's ghost). It is marked with the decision.
+  - `docs/MANUAL_CHECKS.md` (new): the drag-and-drop, touch and layout checklist. `docs/TESTING.md`, `CLAUDE.md` and `README.md` describe the drop convention, pointer events, the layout and the new styles. `plans/applicant-tracking-system.md`: four criteria ticked.
+- **TDD:** none, per the plan. The behavior is in the browser, and Phase 6 already test-drove the endpoint. The view tests take the drop form each card renders and post it as the board's script would:
+  - a legal drop asks for confirmation and writes nothing, and the plain confirmation has no note field;
+  - once confirmed, the card moves, only the two columns are swapped, and the card lands animated;
+  - the confirmation can't be submitted twice;
+  - the Move menu still makes a one-step move without asking;
+  - without HTMX, a drop's confirmation is a page;
+  - a note-needing drop returns the note dialog, then moves once confirmed;
+  - three illegal drops (Applied → Hired, Rejected → Withdrawn, and a Recruiter into Offer) are refused at once, each leaving the card shaking in its redrawn column;
+  - a stale card is refused;
+  - each card's hints match its Move menu;
+  - cards have no native `draggable` attribute;
+  - the columns carry no text hints;
+  - the layout checks: stage order, arrows, the wrap, and Rejected and Withdrawn apart, inside the drop area.
+- **Decisions:**
+  - Drops onto faded stages are posted rather than blocked, so the server's message explains the refusal.
+  - The drop form is a real hidden `<form>` submitted with `requestSubmit()`, so HTMX sends it exactly like the Move menu's forms.
+  - The confirmation is built on the server, from the same dialog as the note step, and only after `move_refusal()` passes, so the wording uses real names and stage labels. Only drops are confirmed; a Move-menu pick is already deliberate.
+  - While the dialog is open, the card waits in the gap. Closing the dialog slides it home. Any other answer, whether a move or a refusal, puts it back first (in `htmx:beforeSwap`), and the server's columns are then swapped in. So the page always ends up showing what's really saved. A failed request also sends it home.
+  - Over a collapsed panel no gap opens, and the card shrinks into the bar.
+  - Between columns (on an arrow, say) the last hovered stage stays lit, so the layout shifts from opening gaps can't make the highlight flicker.
+  - A drag can start on the candidate's name, and the click that follows a drag is swallowed, so it doesn't open the page. Buttons and the Move menu never start a drag.
+  - Touch timings: 280 ms hold; a move over 10 px before then counts as a scroll; mouse drags start after 4 px.
+  - Highlight states are data attributes styled outside any CSS layer, so they beat the columns' own utilities.
+  - Three stages a row from `md` up, because the page is `max-w-6xl`.
+  - Folding is rendered by the server (`data-beyond-fold` and the toggle with its count come with the cards, so every swap redraws them correctly). Only the expanded flag and the search text live in the browser, on the column element that swaps don't replace.
+  - The search matches the candidate's name, as you type, within that one stage. Collapsing clears it, and it never hides the "+N more" toggle.
+  - The stylesheet version is the built file's modification time, read on each page render. Before the CSS is built (in tests) the link has no version. The library's own `{% tailwind_css %}` adds no version in development, which is why it was replaced.
+  - The empty-stage icon is `inbox` (already in the project).
+- **Deviations:**
+  - Prompt 2 added the no-horizontal-scroll layout, the arrows, and Rejected and Withdrawn set apart. None of these was in the Phase 7 plan. Rejected and Withdrawn stayed collapsed to counts, so story 46 still holds.
+  - Prompt 3 changed approved behavior: a drop no longer moves a card at once, and animations were added.
+  - Prompt 4 said the second round missed the point:
+    - the user saw no visible change while dragging;
+    - every box showed all three hint lines;
+    - the browser's ghost was hard to follow.
+  - Diagnosis and design (prompts 4–6):
+    - The hint lines and the missing highlights pointed to a stale cached stylesheet in the user's browser (the built CSS on disk was current).
+    - The text hints were dropped anyway, as the user asked.
+    - Instead of guessing the design, the agent asked first, and the user chose a prototype.
+    - The user picked variant B (pointer events, mouse and touch) with every allowed stage lit.
+  - Prompt 7 added folding busy stages, search and the empty-stage icon, none of which was in the Phase 7 plan. The agent asked two questions one at a time, and the user picked both recommended answers: expand in place (not a pop-up or an internal scroll) and newest arrivals first. Newest-first replaced Phase 6's "in the order they reached the column", which no test depended on.
+  - This departs from the plan's and PRD's "built-in/native browser drag-and-drop" wording. It still uses no library (SortableJS stays out), and `CLAUDE.md` now says "the browser's own pointer events". The PRD and plan text were left unchanged.
+- **Sideways:**
+  - Test and tooling fixes during the first build:
+    - the `app` fixture moved to `conftest.py`;
+    - two test-helper regex bugs were fixed;
+    - a ruff long-line fix;
+    - the drag styles were moved out of `@layer components`, because the column's own `bg-*` utility beat them there.
+  - After prompt 3:
+    - an earlier CSS insertion had separated the `animate-rise` comment from its `@theme` block, and both were rewritten in order;
+    - the old "legal drop moves at once" test was replaced by confirm-first tests;
+    - a long shell heredoc failed to parse, and nothing was written.
+  - **The stale-CSS diagnosis (prompt 4):** the built CSS on disk had the hint-hiding rules, so the user's browser was most likely using an old cached copy. The agent suggested Ctrl+Shift+R.
+  - **Prototype checks (headless Edge):**
+    - The first rerun hung on a headless Edge left over from crashed runs that still held the debugging port. It was killed, and the check moved to a fresh port and profile.
+    - Variant B's illegal drop onto Hired did nothing, because the prototype's own "try this" panel covered Hired. Fixed: the panels fade during a drag, and the hit test looks beneath floating elements.
+  - **Build checks:** headless Edge with real mouse and touch input against a freshly seeded scratch database. All passed:
+    - a confirmed one-step move;
+    - a cancelled note move;
+    - an illegal drop with a shake;
+    - a drop onto the collapsed panel;
+    - Escape mid-drag;
+    - a drag that starts on a link and opens nothing;
+    - press-and-hold touch at 390px;
+    - a quick swipe that scrolls rather than drags;
+    - Interviewers unable to pick anything up.
+  - **Bugs those checks found:**
+    - The drop gap reused the columns' `data-drop` attribute. It became `data-gap`.
+    - Chrome reports a size for the list inside a closed `<details>`, so a hidden gap opened over the collapsed panel. The check now asks whether the panel is open.
+  - **Check-harness problems:**
+    - The check server ran with `--noreload`, so Django kept serving the template from before the fix until it was restarted.
+    - Copying the dev database brought along the user's own test moves, which broke the script's starting positions. The script switched to a freshly seeded scratch database.
+    - The script released over a panel the opening gap had pushed lower. It now re-aims before releasing, as a person would.
+  - Synthetic and DevTools input can't fully stand in for a hand on a mouse or a phone, so the last criterion is left for the user.
+  - **After prompt 7:**
+    - The stale-CSS diagnosis was confirmed against the running server: the stylesheet response had `Last-Modified` but no `Cache-Control`, and the library's tag links it with no version in debug.
+    - `config` isn't an installed app, so the new tag library had to be registered by name in `TEMPLATES` before `{% load stylesheets %}` worked.
+    - Two new folding tests first failed on a test helper: cutting a swapped column at the first `</ul>` stopped inside a card's own Move menu. The helper now cuts at the next out-of-band swap.
+    - Seeding the crowded scratch board by piping a script into `manage.py shell` failed (the interactive console can't take blocks); it ran with `exec` instead.
+    - **Browser check:** headless Edge on a scratch board with six cards at Applied and an empty Screening, with real mouse input. All passed:
+      - the versioned link;
+      - three cards shown with "+3 more";
+      - expanding to all six, with `aria-expanded`;
+      - searching "ka" (Kai only) and "zzz" (the no-match line);
+      - the empty Screening box stretched to the 352px cap beside the taller Applied, and empty Hired matching a one-card row;
+      - the gap opening at the top of the empty and the folded columns;
+      - a move made while Applied was expanded keeps it expanded with an updated toggle;
+      - "Show fewer" back to three;
+      - no sideways scroll at 390px.
+    - The first drag in that check pressed on a card scrolled below the window, and was re-run after scrolling it into view.
+
 ## 2026-10-19 — Applicant Tracking System: Phase 6/14, Pipeline board and Move menu
 
 ### Prompts

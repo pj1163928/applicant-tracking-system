@@ -1,0 +1,13 @@
+{% comment %}
+Searching an expanded column's cards by name. Expects `column`. It sits outside
+the column's <ul>, so it keeps what was typed when a move swaps the cards; the
+board's script filters as you type, and shows the box only while the column is
+expanded (see [data-stage-search-box] in assets/css/source.css).
+{% endcomment %}
+<div class="px-2 pb-2" data-stage-search-box data-testid="stage-search-{{ column.stage }}">
+  <label class="input input-sm w-full">
+    {% icon "search" "size-4 opacity-60" %}
+    <input type="search" placeholder="Search {{ column.stage.label }}" aria-label="Search applicants at {{ column.stage.label }}" autocomplete="off" data-stage-search>
+  </label>
+  <p class="mt-2 text-center text-xs opacity-60" role="status" hidden data-no-match>No one at {{ column.stage.label }} matches that name.</p>
+</div>

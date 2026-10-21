@@ -10,6 +10,7 @@ from django.views.generic import CreateView, DetailView, UpdateView
 
 from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import APPLICATION_MANAGER_ROLES, STAGE_MOVER_ROLES
+from accounts.roles import AnyUser
 from applications.board import board_columns
 from applications.forms import ApplicationForm, ApplicationSourceForm, MoveForm
 from applications.models import Application
@@ -199,16 +200,26 @@ class ApplicationUpdateView(RoleRequiredMixin, SourceFieldsMixin, SuccessMessage
         }
 
 
+def board_context(opening: JobOpening, user: AnyUser) -> dict:
+    """The board page's columns: the pipeline stages in order, and Rejected and Withdrawn apart."""
+    columns = board_columns(opening, user)
+    return {
+        "opening": opening,
+        "pipeline": [column for column in columns if not column.collapsible],
+        "closed": [column for column in columns if column.collapsible],
+    }
+
+
 class PipelineBoardView(DetailView):
-    """One opening's pipeline board. Every role may view it; only movers get Move menus."""
+    """One opening's pipeline board. Every role may view it; only movers get Move menus
+    and draggable cards."""
 
     queryset = JobOpening.objects.select_related("designated_authority")
     template_name = "applications/board.html"
     context_object_name = "opening"
 
     def get_context_data(self, **kwargs):
-        columns = board_columns(self.object, self.request.user)
-        return super().get_context_data(**kwargs) | {"columns": columns}
+        return super().get_context_data(**kwargs) | board_context(self.object, self.request.user)
 
 
 NOTE_PROMPTS = {
@@ -219,11 +230,14 @@ NOTE_PROMPTS = {
 
 
 class ApplicationMoveView(RoleRequiredMixin, View):
-    """The single endpoint for stage moves, from the Move menu (and, later, drag-and-drop).
+    """The single endpoint for stage moves, from the Move menu and from drag-and-drop.
 
-    POST ``to_stage`` and ``expected_stage`` (the stage the card showed). A
-    move that asks for a note gets the note dialog first; the dialog posts
-    again with ``confirmed`` and the note. Every move goes through
+    POST ``to_stage`` and ``expected_stage`` (the stage the card showed); a
+    dropped card posts its hidden drop form, which sends the same two plus
+    ``dropped``. A move that asks for a note gets the note dialog first, and a
+    dropped move that doesn't gets a plain confirmation, since a drop is easy
+    to make by accident. Either dialog posts again with ``confirmed`` (and the
+    note). Refusals never wait for a dialog. Every move goes through
     ``move_application()``. HTMX requests get the status message plus the
     affected columns as out-of-band swaps; refusals come back as 400 (or 403
     for permission) with the columns as they really are. Without HTMX, a move
@@ -241,7 +255,7 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         form = MoveForm(request.POST)
         if not form.is_valid():
             if set(form.errors) == {"note"}:
-                return self.ask_for_note(form)
+                return self.ask_first(form)
             first_error = next(iter(form.errors.values()))[0]
             return self.refused(
                 ValidationError(first_error), form.cleaned_data.get("expected_stage")
@@ -251,8 +265,9 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         refusal = move_refusal(self.application, to_stage, request.user, expected_stage=shown)
         if refusal is not None:
             return self.refused(refusal, shown)
-        if prompts_for_note(self.application.stage, to_stage) and not data["confirmed"]:
-            return self.ask_for_note(form)
+        asks_first = data["dropped"] or prompts_for_note(self.application.stage, to_stage)
+        if asks_first and not data["confirmed"]:
+            return self.ask_first(form)
         from_stage = self.application.stage
         try:
             move_application(
@@ -265,7 +280,7 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         except ValidationError as error:
             if error.code == NOTE_REQUIRED:
                 form.add_error("note", error)
-                return self.ask_for_note(form)
+                return self.ask_first(form)
             return self.refused(error, shown)
         except PermissionDenied as error:
             return self.refused(error, shown)
@@ -274,7 +289,9 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         if not is_htmx_partial(request):
             messages.success(request, message)
             return redirect("openings:board", self.opening.pk)
-        return self.board_update(message, "success", [from_stage, to_stage, shown])
+        return self.board_update(
+            message, "success", [from_stage, to_stage, shown], landed=self.application.pk
+        )
 
     def refused(self, error: ValidationError | PermissionDenied, shown: str | None):
         """Say why the move wasn't made, and show the columns as they really are."""
@@ -282,24 +299,30 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         message = error.messages[0] if isinstance(error, ValidationError) else str(error)
         if is_htmx_partial(self.request):
             stages = [self.application.stage, shown] if shown else [self.application.stage]
-            return self.board_update(message, "error", stages, status=status)
+            return self.board_update(
+                message, "error", stages, status=status, bounced=self.application.pk
+            )
         messages.error(self.request, message)
-        columns = board_columns(self.opening, self.request.user)
-        context = {"opening": self.opening, "columns": columns}
+        context = board_context(self.opening, self.request.user)
         return self.respond("applications/board.html", context, status)
 
-    def ask_for_note(self, form: MoveForm):
-        """Show the note dialog (or, without HTMX, a page) before making the move."""
+    def ask_first(self, form: MoveForm):
+        """Show the note dialog, or a dropped move's confirmation (without HTMX, a page),
+        before making the move."""
         from_stage, to_stage = self.application.stage, form.cleaned_data["to_stage"]
         kind, required = move_kind(from_stage, to_stage), requires_note(from_stage, to_stage)
-        if kind == SKIP:
+        asks_for_note = prompts_for_note(from_stage, to_stage)
+        name = self.application.candidate.full_name
+        if not asks_for_note:
+            reason = (
+                f"You dropped {name} on {Stage(to_stage).label}. This moves them one step "
+                f"forward, from {Stage(from_stage).label} to {Stage(to_stage).label}."
+            )
+        elif kind == SKIP:
             labels = [stage.label for stage in skipped_stages(from_stage, to_stage)]
             reason = f"This skips {' and '.join(labels)}. Say why it's being expedited."
         else:
-            reason = NOTE_PROMPTS[kind].format(
-                name=self.application.candidate.full_name,
-                stage=Stage(from_stage).label.lower(),
-            )
+            reason = NOTE_PROMPTS[kind].format(name=name, stage=Stage(from_stage).label.lower())
         form.fields["note"].widget.attrs.update(
             {"required": required, "autofocus": True, "placeholder": "Required" if required else ""}
         )
@@ -309,6 +332,7 @@ class ApplicationMoveView(RoleRequiredMixin, View):
             "to_stage": Stage(to_stage),
             "expected_stage": form.cleaned_data["expected_stage"],
             "requires_note": required,
+            "asks_for_note": asks_for_note,
             "reason": reason,
         }
         if not is_htmx_partial(self.request):
@@ -318,10 +342,29 @@ class ApplicationMoveView(RoleRequiredMixin, View):
         response["HX-Reswap"] = "innerHTML"
         return response
 
-    def board_update(self, message: str, level: str, stages: list[str], status: int = 200):
-        """The status message, plus the given columns swapped in out of band."""
+    def board_update(
+        self,
+        message: str,
+        level: str,
+        stages: list[str],
+        status: int = 200,
+        landed: int | None = None,
+        bounced: int | None = None,
+    ):
+        """The status message, plus the given columns swapped in out of band.
+
+        ``landed`` is the pk of the application just moved, so its card arrives
+        animated; ``bounced`` is one whose move was refused, so its card shakes.
+        """
         columns = board_columns(self.opening, self.request.user, stages)
-        context = {"message": message, "level": level, "columns": columns, "opening": self.opening}
+        context = {
+            "message": message,
+            "level": level,
+            "columns": columns,
+            "opening": self.opening,
+            "landed_pk": landed,
+            "bounced_pk": bounced,
+        }
         return self.respond("applications/partials/move_result.html", context, status)
 
     def respond(self, template: str, context: dict, status: int = 200):
