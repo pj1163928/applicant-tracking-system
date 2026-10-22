@@ -7,7 +7,7 @@
   <span class="grid size-11 place-items-center rounded-box bg-warning/15 text-warning" aria-hidden="true">{% icon "bell" "size-6" %}</span>
   <div>
     <h1 class="text-2xl font-bold sm:text-3xl">Needs attention</h1>
-    <p class="text-sm opacity-70">Closed openings whose applicants are still in progress, waiting for a decision, and grace periods that have ended without one.</p>
+    <p class="text-sm opacity-70">Closed openings whose applicants are still in progress, waiting for a decision, grace periods that have ended without one, and reopened openings waiting for someone to choose who to restore.</p>
   </div>
 </header>
 
@@ -15,7 +15,7 @@
 <div class="mt-6 rounded-box border border-dashed border-base-300 bg-base-100 p-8 text-center" data-testid="attention-empty">
   {% icon "inbox" "mx-auto size-8 opacity-50" %}
   <p class="mt-2 font-semibold">Nothing needs your decision.</p>
-  <p class="text-sm opacity-70">When an opening you can decide for closes with applicants still in progress, it shows up here.</p>
+  <p class="text-sm opacity-70">When an opening you can decide for closes with applicants still in progress, or reopens with applicants to restore, it shows up here.</p>
 </div>
 {% else %}
 
@@ -25,7 +25,7 @@
   </h2>
   {% if yours %}
   <ul class="mt-2 grid gap-2" data-testid="attention-yours">
-    {% for item in yours %}{% include "notifications/partials/attention_item.html" %}{% endfor %}
+    {% for item in yours %}{% include "notifications/partials/attention_entry.html" %}{% endfor %}
   </ul>
   {% else %}
   <p class="mt-2 text-sm opacity-70" data-testid="attention-yours-empty">None of your openings are waiting on you.</p>
@@ -39,7 +39,7 @@
   </h2>
   <p class="text-sm opacity-70">Their designated authority decides first, but as an {% if user.is_superuser %}Admin{% else %}Hiring Manager{% endif %} you can too.</p>
   <ul class="mt-2 grid gap-2" data-testid="attention-others">
-    {% for item in others %}{% include "notifications/partials/attention_item.html" %}{% endfor %}
+    {% for item in others %}{% include "notifications/partials/attention_entry.html" %}{% endfor %}
   </ul>
 </section>
 {% endif %}

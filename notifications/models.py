@@ -12,6 +12,7 @@ class CandidateMessageKind(models.TextChoices):
     CANCELLED = "cancelled", "Application cancelled: position closed"
     GRACE_PERIOD_SET = "grace_period_set", "Grace period set"
     GRACE_REMINDER = "grace_reminder", "Grace period reminder"
+    RESTORED = "restored", "Application restored: position reopened"
 
 
 class CandidateMessage(models.Model):

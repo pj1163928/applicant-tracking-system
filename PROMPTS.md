@@ -28,6 +28,70 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-21 — Applicant Tracking System: Phase 13/14, Reopening and restoring applicants
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 13`.
+2. "Ok looks good jst make sure that the migration backfill associates each historical closure-cause stageChange with the correct closing event, this includes applications affected by mutliple closures. It should not rely one timestaps alone where the relationship is ambiguous."
+3. "Looks good move to next" (approving TDD cycle 1's RED test).
+4. "Looks good move to next" (approving TDD cycle 2's RED test).
+5. "Ok looks good move to development" (approving TDD cycle 3's RED test).
+
+### Summary
+
+- **Outcome:** Phase 13 is built.
+  - Anyone who can close an opening (Admins, Recruiters, Hiring Managers) can reopen it from a confirmation page with an optional note. Reopening writes a "Reopened" event and clears the grace period, so reminders and the period's end stop.
+  - A decision-maker (`can_decide_closure`) gets a checklist of the applicants cancelled at the latest closure. Each ticked applicant goes back to the stage they were at before the closure, through `move_application`, and gets one "position reopened" email. "Don't restore anyone" records that choice instead.
+  - Archived candidates are listed but disabled, marked "Archived; unarchive first". Posting them by hand is refused by the form and by the service.
+  - When a Recruiter who isn't the authority reopens, the choice shows up in the authority's Needs attention panel and counts toward the nav badge. A decider who reopens goes straight to the checklist.
+  - `uv run pytest`: 1023 passed (87 new). `uv run ruff check .` and `uv run ruff format .` are clean. Three migrations. The seed changed, and running it twice changes nothing.
+- **Changes:**
+  - `applications/models.py`: `StageChange.closure` (a PROTECT foreign key to the "closed" `OpeningEvent`), the cause `REOPENING`, a check constraint that manual rows have no closure, and `StageChangeQuerySet.cancellations_to_restore()`.
+  - `applications/migrations/0002_stage_change_closure.py`: the schema change, plus a backfill (`link_cancellations`, built on the pure `match_closures`):
+    - an opening with one closure links every one of its cancellation rows to it;
+    - with several closures, the cancellation-email log (`closure-<pk>` occasions) pairs the rows with the closures in write order;
+    - otherwise a row is linked only when its timestamp falls strictly inside one closure's window and agrees with the emails and the row order, and anything ambiguous stays unlinked.
+  - `applications/services.py`: `move_application(..., closure=None)`. `applications/admin.py`: the closure is shown read-only. `partials/history_list.html`: the badge now shows for any cause other than manual.
+  - `openings/models.py`: the event kinds `REOPENED` and `APPLICATIONS_RESTORED`, and `awaiting_restore_choice()`, annotated `restorable_count` and counted in the database. `openings/migrations/0005_reopen_event_kinds.py`.
+  - `openings/services.py`:
+    - `cancel_remaining_applications` passes `closure=`;
+    - new: `reopen_refusal`, `reopen_opening`, `latest_reopening`, `restorable_cancellations`, `restore_refusal`, `RestoreChoice`, `restore_choices`, `choice_reason`, `application_restore_refusal`, `restore_applications` and `restore_note`.
+  - `openings/forms.py`: `ReopenOpeningForm` and `RestoreApplicationsForm`, whose queryset is the selectable restore choices. `openings/views.py`: `OpeningReopenView`, `OpeningRestoreView` and `restore_context`. `openings/urls.py`: `openings:reopen` and `openings:restore`.
+  - Templates:
+    - new pages: `jobopening_reopen.html` and `jobopening_restore.html`;
+    - new partial: `partials/restore_panel.html`;
+    - edited: the Reopen button on the detail page, and event history icons for reopened and restored;
+    - new icon: `templates/icons/lock-open.svg`.
+  - `notifications`: the `RESTORED` message kind with migration 0003, and the `restored_*` email templates. `attention.py` gains `RestoreItem` and `restores_awaiting_choice`, and `attention_count` and `attention_summary` now include restore choices. The panel renders both kinds through `partials/attention_entry.html` and `restore_item.html`.
+  - `accounts/permissions.py`: docstrings for reopening and restoring. `accounts/management/commands/seed.py`: Lena Park applies for UX Researcher and reaches Interview, is cancelled when it closes and is then archived. To make that possible, the archive step now runs after the closures.
+  - Tests:
+    - `openings/tests/test_restore_services.py` (the three TDD tests and 18 more), `test_reopen_services.py` and `test_reopen_views.py`;
+    - `notifications/tests/test_restore_attention.py` and `applications/tests/test_closure_backfill.py`;
+    - updated seed tests;
+    - new setup helpers in `openings/tests/conftest.py`: `cancel_directly`, `move_directly` and `reopen_directly`.
+  - `CLAUDE.md` documents reopen and restore, and `move_application`'s `closure`. The plan's Phase 13 criteria are ticked.
+- **TDD:** the plan's three behaviors.
+  1. **The restore goes back to the stage before the latest closure.** The test applicant is cancelled at two closures; RED was "still Rejected". This one drove `restore_applications` through `move_application`.
+  2. **Restoring into Offer needs `can_make_offer`.** No real role can decide a closure without being able to make offers, so the test makes `can_make_offer` refuse. The refusal already happened through `move_application`. RED was on the message, which didn't name the applicant; passing it added an up-front check of every applicant before any move.
+  3. **Archived candidates can't be restored.** RED was on the checklist's reason; the server already refused.
+- **Decisions:**
+  - each cancellation and restore row names its closure, instead of comparing timestamps;
+  - a new Reopening cause, so the "latest closure-cause row" lookup stays clean;
+  - an application counts as restorable only if it hasn't moved since its cancellation;
+  - the choice counts as made after any restore submission, including "Don't restore anyone";
+  - restores are all-or-nothing;
+  - no staff email on a Recruiter's reopen, because story 80 names only the panel;
+  - the seed adds an archived applicant to restore.
+- **Deviations:** prompt 2 tightened the backfill: no timestamp-only links where the relationship is ambiguous, including applications affected by several closures. The final design uses the email log as evidence, takes timestamps only when they fall strictly inside one window and agree with it, and leaves anything else unlinked. `applications/tests/test_closure_backfill.py` covers ties, emails that disagree, repeat cancellations within one closure, and rows out of order.
+- **Sideways:**
+  - `makemigrations` named the applications migration after the notifications one; it was renamed and the dependency fixed.
+  - A literal newline was lost in a script edit and broke `openings/services.py` until it was fixed.
+  - Long inline shell scripts failed twice, and a stray `cat` hung one command until it was stopped.
+  - The first Needs attention fixture closed the opening before recording its applications.
+  - A PowerShell edit of `CLAUDE.md` read the file with the wrong encoding, garbling `–`, `…` and `→`, adding a BOM, and replacing a phrase with a leftover placeholder. Reviewing the diff caught all of it, and an exact byte round-trip repaired it.
+  - The new migrations were applied to the dev database, after a backup to the scratchpad. On that older database the seed added Lena but skipped her UX Researcher application, because the opening was already closed, so the full restore demo needs a fresh database.
+
 ## 2026-10-21 — Applicant Tracking System: Phase 12/14, Admin in-progress view
 
 ### Prompts

@@ -2,11 +2,11 @@
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 
 from applications.stages import Stage
 from candidates.models import Candidate, Source
-from openings.models import JobOpening
+from openings.models import JobOpening, OpeningEvent
 
 
 class StageChangeCause(models.TextChoices):
@@ -14,6 +14,7 @@ class StageChangeCause(models.TextChoices):
 
     MANUAL = "manual", "Manual"
     CLOSURE = "closure", "Closure"
+    REOPENING = "reopening", "Reopening"
 
 
 class ApplicationQuerySet(models.QuerySet):
@@ -77,11 +78,32 @@ class Application(models.Model):
         return self.source.category == Source.Category.REFERRAL
 
 
+class StageChangeQuerySet(models.QuerySet):
+    def cancellations_to_restore(self) -> "StageChangeQuerySet":
+        """Return the closure cancellations whose application hasn't moved since.
+
+        Each is a closure-cause move into Rejected that is still its
+        application's latest row, so the application is at Rejected because of
+        it. Its ``closure`` is the "closed" event it belongs to, and its
+        ``from_stage`` is where a restore puts the application back.
+        """
+        later = StageChange.objects.filter(
+            application=OuterRef("application"), pk__gt=OuterRef("pk")
+        )
+        return self.filter(
+            cause=StageChangeCause.CLOSURE,
+            to_stage=Stage.REJECTED,
+            application__stage=Stage.REJECTED,
+        ).exclude(Exists(later))
+
+
 class StageChange(models.Model):
     """One row of an application's permanent history: from, to, who, when, note and cause.
 
     The first row of every application has an empty ``from_stage`` and
     ``to_stage`` Applied; the database allows only one such row per application.
+    A cancellation (cause closure) and a restore (cause reopening) also name
+    the closure they belong to, its "closed" ``OpeningEvent``; manual moves never do.
     """
 
     Cause = StageChangeCause
@@ -97,6 +119,15 @@ class StageChange(models.Model):
     changed_at = models.DateTimeField(auto_now_add=True)
     note = models.TextField(blank=True)
     cause = models.CharField(max_length=10, choices=Cause.choices, default=Cause.MANUAL)
+    closure = models.ForeignKey(
+        OpeningEvent,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="stage_changes",
+    )
+
+    objects = StageChangeQuerySet.as_manager()
 
     class Meta:
         ordering = ["changed_at", "pk"]
@@ -121,6 +152,10 @@ class StageChange(models.Model):
                 fields=["application"],
                 condition=Q(from_stage=""),
                 name="stage_change_one_initial_row_per_application",
+            ),
+            models.CheckConstraint(
+                condition=~Q(cause=StageChangeCause.MANUAL) | Q(closure__isnull=True),
+                name="stage_change_manual_has_no_closure",
             ),
         ]
 

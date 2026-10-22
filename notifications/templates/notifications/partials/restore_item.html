@@ -1,0 +1,23 @@
+{% comment %}One reopened opening waiting for a restore choice. Expects `item` (notifications.attention.RestoreItem).{% endcomment %}
+{% with opening=item.opening count=item.opening.restorable_count %}
+<li class="animate-rise motion-reduce:animate-none rounded-box border border-base-300 bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="restore-item">
+  <div class="flex flex-wrap items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-2">
+        <a href="{{ opening.get_absolute_url }}" class="link link-hover font-semibold break-words">{{ opening.title }}</a>
+        {% include "openings/partials/status_badge.html" %}
+        <span class="badge badge-sm badge-info badge-soft" data-testid="restore-count">{{ count }} to restore or not</span>
+      </p>
+      <p class="mt-1 text-sm opacity-70">
+        {{ opening.department }}
+        {% if item.reopened %}· Reopened {{ item.reopened.at|date:"M j, Y" }} by {{ item.reopened.by.get_full_name|default:item.reopened.by.username }}{% endif %}
+      </p>
+      <p class="mt-1 text-sm">{{ count }} applicant{{ count|pluralize }} cancelled when it closed {{ count|pluralize:"is,are" }} waiting for someone to choose whether to restore them.</p>
+      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+    </div>
+    <a href="{% url 'openings:restore' opening.pk %}" class="btn btn-sm btn-primary gap-2" data-testid="restore-choose">
+      Choose {% icon "arrow-right" "size-4" %}
+    </a>
+  </div>
+</li>
+{% endwith %}

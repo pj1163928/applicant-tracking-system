@@ -1,0 +1,36 @@
+{% load accounts_tags %}
+{% comment %}
+A reopened opening's applicants cancelled at its latest closure, who could
+still be restored. Shown only while the opening is open and has some. Expects
+`opening`, `restorable_count` and `restore_pending` (restore_context). The
+action shows only to users allowed by can_decide_closure, and the server
+refuses everyone else too.
+{% endcomment %}
+{% with count=restorable_count authority=opening.designated_authority %}
+<section id="restore" class="card mt-6 overflow-hidden border {% if restore_pending %}border-success/50{% else %}border-base-300{% endif %} bg-base-100 shadow-sm" aria-labelledby="restore-heading" data-testid="restore-panel">
+  {% if restore_pending %}<div class="h-1.5 bg-success" aria-hidden="true"></div>{% endif %}
+  <div class="card-body gap-4">
+    <div class="flex items-start gap-3">
+      <span class="grid size-10 shrink-0 place-items-center rounded-full bg-success/15 text-success" aria-hidden="true">{% icon "user-check" "size-5" %}</span>
+      <div class="min-w-0">
+        <h2 id="restore-heading" class="text-lg font-bold">{{ count }} cancelled applicant{{ count|pluralize }} can be restored</h2>
+        <p class="text-sm opacity-80">
+          {% if restore_pending %}This opening has reopened. {{ count|pluralize:"This applicant was,These applicants were" }} cancelled when it closed, and someone with closure authority chooses whether each goes back to the stage they were at.{% else %}The restore choice was made, but {{ count|pluralize:"this applicant was,these applicants were" }} left cancelled and can still be restored.{% endif %}
+        </p>
+      </div>
+    </div>
+    {% if user|can_decide_closure:opening %}
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
+      <p class="text-sm">{% if authority == user %}You're the designated authority, so this choice is yours.{% else %}You can choose for {{ authority.get_full_name|default:authority.username }}, the designated authority.{% endif %}</p>
+      <a href="{% url 'openings:restore' opening.pk %}" class="btn {% if restore_pending %}btn-success{% else %}btn-outline{% endif %} gap-2" data-testid="choose-restore">
+        {% icon "user-check" "size-4" %} Choose who to restore
+      </a>
+    </div>
+    {% else %}
+    <p class="flex items-center gap-2 border-t border-base-300 pt-4 text-sm opacity-80" data-testid="restore-waiting">
+      {% icon "lock" "size-4 shrink-0" %} {% if restore_pending %}Waiting for {{ authority.get_full_name|default:authority.username }}, the designated authority, or an Admin or Hiring Manager to choose.{% else %}{{ authority.get_full_name|default:authority.username }}, the designated authority, or an Admin or Hiring Manager can restore them.{% endif %}
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endwith %}

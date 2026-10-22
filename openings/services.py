@@ -9,11 +9,13 @@ controls.
 closes and how its remaining applicants are let go. ``set_grace_period()`` and
 ``extend_grace_period()`` give them time instead, and ``process_grace_periods()``
 (run daily by the ``process_grace_periods`` command) sends the reminders and
-handles each grace period's end. Each writes an ``OpeningEvent``, checks its
-own permission rule, and changes stages only through
-``applications.services.move_application()``.
+handles each grace period's end. ``reopen_opening()`` opens it again, and
+``restore_applications()`` puts applicants cancelled at its latest closure back
+where they were. Each writes an ``OpeningEvent``, checks its own permission
+rule, and changes stages only through ``applications.services.move_application()``.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -24,8 +26,8 @@ from django.utils import timezone
 from django.utils.dateformat import format as format_date
 
 from accounts.permissions import can_decide_closure, can_manage_opening_skills, can_manage_openings
-from applications.models import StageChange
-from applications.services import move_application
+from applications.models import Application, StageChange
+from applications.services import ARCHIVED_CANDIDATE, move_application, move_refusal
 from applications.stages import ACTIVE_STAGES, Stage
 from notifications.models import CandidateMessage
 from notifications.services import (
@@ -233,6 +235,11 @@ def latest_closure(opening: JobOpening) -> OpeningEvent | None:
     return opening.events.filter(kind=OpeningEvent.Kind.CLOSED).first()
 
 
+def latest_reopening(opening: JobOpening) -> OpeningEvent | None:
+    """Return ``opening``'s most recent "reopened" event, or None if it was never reopened."""
+    return opening.events.filter(kind=OpeningEvent.Kind.REOPENED).first()
+
+
 def closure_occasion(opening: JobOpening) -> str:
     """Name ``opening``'s latest closure, for the identity of the candidate emails it causes."""
     closure = latest_closure(opening)
@@ -279,6 +286,7 @@ def cancel_remaining_applications(opening: JobOpening, *, by: User) -> list[Stag
                 note=CLOSURE_NOTE,
                 cause=StageChange.Cause.CLOSURE,
                 expected_stage=application.stage,
+                closure=closure,
             )
         )
         send_candidate_message(application, CandidateMessage.Kind.CANCELLED, occasion=occasion)
@@ -651,3 +659,257 @@ def send_due_reminders(opening: JobOpening, *, today: date) -> int:
         )
         sent += message is not None
     return sent
+
+
+ALREADY_OPEN = "already_open"
+NOT_OPEN = "not_open"
+NOT_RESTORABLE = "not_restorable"
+
+# The note on every application a restore puts back after a reopening.
+REOPEN_NOTE = "Position reopened."
+
+
+def reopen_refusal(opening: JobOpening, by: User) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't reopen ``opening`` now, or None if they can.
+
+    Anyone who may close an opening may reopen it: Admins, Recruiters and
+    Hiring Managers. Judges ``opening.status`` as given, so ``reopen_opening()``
+    passes the stored row.
+    """
+    if not can_manage_openings(by):
+        return PermissionDenied("Only Admins, Recruiters and Hiring Managers can reopen openings.")
+    if opening.is_open:
+        return ValidationError(f"{opening.title} is already open.", code=ALREADY_OPEN)
+    return None
+
+
+@transaction.atomic
+def reopen_opening(opening: JobOpening, *, by: User, note: str = "") -> OpeningEvent:
+    """Reopen closed ``opening``: it takes new applications again, with a "reopened" event.
+
+    Any grace period is cleared, so no more reminders go out and its end never
+    runs. Applications still in progress carry on as they are. Applicants
+    cancelled at the latest closure stay Rejected until someone allowed by
+    ``can_decide_closure`` restores them (``restore_applications()``); until
+    that choice is made the opening waits in its authority's Needs attention.
+
+    Locks and re-reads the stored opening. Raises ``PermissionDenied`` unless
+    ``by`` may manage openings, and ``ValidationError`` if it is already open.
+    Nothing is written when it refuses. Returns the new event.
+    """
+    stored = (
+        JobOpening.objects.select_for_update()
+        .select_related("designated_authority")
+        .get(pk=opening.pk)
+    )
+    refusal = reopen_refusal(stored, by)
+    if refusal is not None:
+        raise refusal
+    lines = [note.strip()] if note.strip() else []
+    if stored.grace_period_running:
+        lines.append(f"Cleared the grace period ending {display_date(stored.grace_period_ends)}.")
+    stored.status = JobOpening.Status.OPEN
+    stored.grace_period_ends = None
+    stored.grace_expiry_action = ""
+    stored.grace_period_set_on = None
+    stored.grace_expired_on = None
+    stored.save(update_fields=["status", *GRACE_FIELDS, "updated_at"])
+    event = OpeningEvent.objects.create(
+        opening=stored, kind=OpeningEvent.Kind.REOPENED, by=by, note="\n".join(lines)
+    )
+    copy_grace_fields(stored, opening)
+    opening.status = stored.status
+    return event
+
+
+def restorable_cancellations(opening: JobOpening):
+    """Return the cancellations from ``opening``'s latest closure that a restore may undo.
+
+    One ``StageChange`` row per application: its cancellation (cause closure)
+    at the latest closure, while the application is still at Rejected because
+    of it. The row's ``from_stage`` is the stage a restore puts it back to.
+    Applications cancelled at an earlier closure, or moved since, are left out.
+    """
+    closure = latest_closure(opening)
+    if closure is None:
+        return StageChange.objects.none()
+    return StageChange.objects.cancellations_to_restore().filter(
+        closure=closure, application__opening=opening
+    )
+
+
+def restore_refusal(opening: JobOpening, by: User) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't restore any of ``opening``'s applicants now, or None.
+
+    Only someone allowed by ``can_decide_closure`` may, and only once the
+    opening has been reopened.
+    """
+    refusal = decide_refusal(opening, by)
+    if refusal is not None:
+        return refusal
+    if not opening.is_open:
+        return ValidationError(
+            f"{opening.title} is closed. Reopen it before restoring its applicants.",
+            code=NOT_OPEN,
+        )
+    return None
+
+
+@dataclass(frozen=True)
+class RestoreChoice:
+    """One applicant cancelled at an opening's latest closure, as the restore checklist shows them.
+
+    ``stage`` is where restoring puts the application back; ``refusal`` is why
+    the user can't restore it, short enough for the checklist ("" if they can).
+    """
+
+    application: Application
+    stage: Stage
+    refusal: str = ""
+
+    @property
+    def selectable(self) -> bool:
+        return not self.refusal
+
+
+def restore_choices(opening: JobOpening, by: User) -> list[RestoreChoice]:
+    """Return the applicants a restore of ``opening`` may undo, by name, each checked for ``by``.
+
+    Every application ``restorable_cancellations()`` finds is listed, including
+    ones ``by`` can't restore, so the checklist can show them disabled with the reason.
+    """
+    rows = (
+        restorable_cancellations(opening)
+        .select_related("application__candidate", "application__opening__designated_authority")
+        .order_by("application__candidate__last_name", "application__candidate__first_name", "pk")
+    )
+    choices = []
+    for row in rows:
+        refusal = application_restore_refusal(row, by)
+        reason = "" if refusal is None else choice_reason(refusal)
+        choices.append(RestoreChoice(row.application, Stage(row.from_stage), reason))
+    return choices
+
+
+def choice_reason(refusal: PermissionDenied | ValidationError) -> str:
+    """The restore checklist's short reason for ``refusal``."""
+    if isinstance(refusal, PermissionDenied):
+        return "Restoring to Offer needs offer authority"
+    if refusal.code == ARCHIVED_CANDIDATE:
+        return "Archived; unarchive first"
+    return refusal.messages[0]
+
+
+def application_restore_refusal(
+    cancellation: StageChange, by: User
+) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't undo ``cancellation``, one of ``restorable_cancellations()``.
+
+    The same rules as any move back to ``cancellation.from_stage``
+    (``move_refusal``), so restoring into Offer still needs ``can_make_offer``,
+    with a message that names the applicant. Returns None if they can.
+    """
+    application = cancellation.application
+    refusal = move_refusal(application, cancellation.from_stage, by, expected_stage=Stage.REJECTED)
+    if refusal is None:
+        return None
+    reason = str(refusal) if isinstance(refusal, PermissionDenied) else refusal.messages[0]
+    message = (
+        f"{application.candidate.full_name} can't be restored to "
+        f"{Stage(cancellation.from_stage).label}. {reason}"
+    )
+    if isinstance(refusal, PermissionDenied):
+        return PermissionDenied(message)
+    return ValidationError(message, code=refusal.code)
+
+
+@transaction.atomic
+def restore_applications(
+    opening: JobOpening, applications: Iterable[Application], *, by: User
+) -> list[StageChange]:
+    """Put each of ``applications`` back where it was before ``opening``'s latest closure.
+
+    Each must be one of ``restorable_cancellations()``: cancelled at the latest
+    closure and still at Rejected. It goes back to the stage its cancellation
+    row moved it from, through ``move_application()`` with cause reopening, the
+    note "Position reopened." and the closure it undoes, and its candidate is
+    sent one "position reopened" email, keyed on that closure so it is never
+    sent twice. Restoring into Offer still needs ``can_make_offer``, and
+    archived candidates can't be restored.
+
+    An empty ``applications`` records the choice to restore nobody. Either way
+    one "Applicants restored" event is written, which is what takes the
+    opening out of Needs attention.
+
+    All or nothing: locks and re-reads the stored opening, checks
+    ``restore_refusal()`` and every chosen application before any moves, and
+    raises ``PermissionDenied`` or ``ValidationError`` (naming the applicant)
+    on the first refusal, with nothing written. Returns the new history rows.
+    """
+    stored = (
+        JobOpening.objects.select_for_update()
+        .select_related("designated_authority")
+        .get(pk=opening.pk)
+    )
+    refusal = restore_refusal(stored, by)
+    if refusal is not None:
+        raise refusal
+    closure = latest_closure(stored)
+    cancellations = {
+        row.application_id: row
+        for row in restorable_cancellations(stored).select_related(
+            "application__candidate", "application__opening__designated_authority"
+        )
+    }
+    chosen = []
+    for application in sorted({*applications}, key=lambda application: application.pk):
+        cancellation = cancellations.get(application.pk)
+        if cancellation is None:
+            raise ValidationError(
+                f"{application.candidate.full_name} wasn't cancelled when {stored.title} last "
+                "closed, or has moved since, so there's nothing to restore.",
+                code=NOT_RESTORABLE,
+            )
+        refusal = application_restore_refusal(cancellation, by)
+        if refusal is not None:
+            raise refusal
+        chosen.append(cancellation)
+    rows = []
+    occasion = closure_occasion(stored)
+    for cancellation in chosen:
+        application = cancellation.application
+        rows.append(
+            move_application(
+                application,
+                cancellation.from_stage,
+                by=by,
+                note=REOPEN_NOTE,
+                cause=StageChange.Cause.REOPENING,
+                expected_stage=Stage.REJECTED,
+                closure=closure,
+            )
+        )
+        send_candidate_message(application, CandidateMessage.Kind.RESTORED, occasion=occasion)
+    OpeningEvent.objects.create(
+        opening=stored,
+        kind=OpeningEvent.Kind.APPLICATIONS_RESTORED,
+        by=by,
+        note=restore_note(chosen, left=len(cancellations) - len(chosen)),
+    )
+    return rows
+
+
+def restore_note(chosen: list[StageChange], *, left: int) -> str:
+    """The "Applicants restored" event's note: who went back to which stage, and who didn't."""
+    if chosen:
+        names = [
+            f"{row.application.candidate.full_name} ({Stage(row.from_stage).label})"
+            for row in chosen
+        ]
+        listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+        note = f"Restored {listed}."
+    else:
+        note = "Chose not to restore anyone."
+    if left:
+        note += f" {left} applicant{'' if left == 1 else 's'} left cancelled."
+    return note

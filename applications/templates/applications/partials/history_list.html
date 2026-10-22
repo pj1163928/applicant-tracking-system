@@ -7,7 +7,7 @@
     <div class="timeline-end mb-4 min-w-0">
       <p class="text-sm font-semibold">
         {% if change.from_stage %}{{ change.get_from_stage_display }} → {{ change.get_to_stage_display }}{% else %}Recorded at {{ change.get_to_stage_display }}{% endif %}
-        {% if change.cause == "closure" %}<span class="badge badge-xs badge-ghost align-middle">{{ change.get_cause_display }}</span>{% endif %}
+        {% if change.cause != "manual" %}<span class="badge badge-xs badge-ghost align-middle">{{ change.get_cause_display }}</span>{% endif %}
       </p>
       <p class="text-xs opacity-60">{{ change.changed_at|date:"M j, Y, g:i a" }} · {{ change.changed_by.get_full_name|default:change.changed_by.username }}</p>
       {% if change.note %}<p class="mt-1 text-sm whitespace-pre-line break-words" data-testid="history-note">“{{ change.note }}”</p>{% endif %}

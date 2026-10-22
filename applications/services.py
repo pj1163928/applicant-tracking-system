@@ -27,7 +27,7 @@ from applications.stages import (
     requires_note,
 )
 from candidates.models import Candidate, Source
-from openings.models import JobOpening
+from openings.models import JobOpening, OpeningEvent
 
 ARCHIVED_CANDIDATE = "archived_candidate"
 CLOSED_OPENING = "closed_opening"
@@ -207,6 +207,7 @@ def move_application(
     note: str = "",
     cause: str = StageChange.Cause.MANUAL,
     expected_stage: str | None = None,
+    closure: OpeningEvent | None = None,
 ) -> StageChange:
     """Move ``application`` to ``to_stage``: the only way an application's stage changes.
 
@@ -219,6 +220,9 @@ def move_application(
     Pass ``expected_stage`` (the stage the user's card showed) to refuse the
     move if anyone has moved the application since, so a stale card or a
     repeated submission can't overwrite a newer stage.
+
+    ``closure`` is the opening's "closed" event that a cancellation (cause
+    closure) or a restore (cause reopening) belongs to; manual moves have none.
 
     Raises ``PermissionDenied`` if ``by`` may not move stages, or may not move
     into Offer or Hired here, and ``ValidationError`` (code ``STALE_STAGE``,
@@ -248,6 +252,7 @@ def move_application(
         changed_by=by,
         note=note,
         cause=cause,
+        closure=closure,
     )
     stored.stage = to_stage
     stored.save(update_fields=["stage", "updated_at"])

@@ -406,12 +406,14 @@ Anyone who can close an opening can reopen it. Reopening writes an OpeningEvent,
 
 ### Acceptance criteria
 
-- [ ] Reopening writes a "reopened" OpeningEvent, clears the grace period fields and stops reminders.
-- [ ] The restore list includes only applications cancelled by the latest closure.
-- [ ] Each restored application goes back to its stage before the closure, with a StageChange row, and its candidate gets one "position reopened" email.
-- [ ] Restoring into Offer is refused for users without `can_make_offer`.
-- [ ] Archived candidates are shown but can't be selected, and posting them directly is refused.
-- [ ] A reopen by a Recruiter puts the restore choice in the designated authority's Needs attention panel.
+- [x] Reopening writes a "reopened" OpeningEvent, clears the grace period fields and stops reminders.
+- [x] The restore list includes only applications cancelled by the latest closure.
+  - *Decided in Phase 13:* each cancellation row names its closure (`StageChange.closure`), so "the latest closure" never depends on timestamps. Rows written before that existed are linked by the migration's backfill: one closure, or the cancellation-email log, decides; a timestamp is used only when it falls strictly inside one closure's window and agrees with the emails, and anything ambiguous stays unlinked. An application moved since its cancellation isn't listed.
+- [x] Each restored application goes back to its stage before the closure, with a StageChange row, and its candidate gets one "position reopened" email.
+  - *Decided in Phase 13:* restore rows have a new cause, Reopening, and the note "Position reopened.". Every restore submission, including "Don't restore anyone", writes one "Applicants restored" event.
+- [x] Restoring into Offer is refused for users without `can_make_offer`.
+- [x] Archived candidates are shown but can't be selected, and posting them directly is refused.
+- [x] A reopen by a Recruiter puts the restore choice in the designated authority's Needs attention panel.
 
 ### TDD
 

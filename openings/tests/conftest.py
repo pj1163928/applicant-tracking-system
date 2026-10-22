@@ -5,6 +5,7 @@ import pytest
 from accounts.roles import HIRING_MANAGER, RECRUITER
 from applications.models import Application, StageChange
 from applications.services import record_application
+from applications.stages import Stage
 from candidates.models import Candidate, Source
 from openings.models import JobOpening, OpeningEvent
 
@@ -103,3 +104,46 @@ def grace_directly(opening, *, by, ends, set_on, action) -> OpeningEvent:
     return OpeningEvent.objects.create(
         opening=opening, kind=OpeningEvent.Kind.GRACE_PERIOD_SET, by=by
     )
+
+
+def cancel_directly(application, closure, by) -> StageChange:
+    """Cancel ``application`` at ``closure`` with direct writes, as cancel now would.
+
+    Writes the closure-cause row into Rejected, linked to ``closure``, without
+    calling ``cancel_remaining_applications`` or emailing anyone.
+    """
+    row = StageChange.objects.create(
+        application=application,
+        from_stage=application.stage,
+        to_stage=Stage.REJECTED,
+        changed_by=by,
+        note="Position closed.",
+        cause=StageChange.Cause.CLOSURE,
+        closure=closure,
+    )
+    Application.objects.filter(pk=application.pk).update(stage=Stage.REJECTED)
+    application.stage = Stage.REJECTED
+    return row
+
+
+def move_directly(application, stage, by, *, cause="manual", closure=None) -> StageChange:
+    """Move ``application`` to ``stage`` with direct writes, without ``move_application``."""
+    row = StageChange.objects.create(
+        application=application,
+        from_stage=application.stage,
+        to_stage=stage,
+        changed_by=by,
+        note="Test setup.",
+        cause=cause,
+        closure=closure,
+    )
+    Application.objects.filter(pk=application.pk).update(stage=stage)
+    application.stage = stage
+    return row
+
+
+def reopen_directly(opening, by) -> OpeningEvent:
+    """Reopen ``opening`` with direct writes, as ``reopen_opening`` would, without calling it."""
+    JobOpening.objects.filter(pk=opening.pk).update(status=JobOpening.Status.OPEN)
+    opening.status = JobOpening.Status.OPEN
+    return OpeningEvent.objects.create(opening=opening, kind=OpeningEvent.Kind.REOPENED, by=by)

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Restore applicants · {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+{% with count=choices|length authority=opening.designated_authority %}
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-success/40 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-success" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-success/15 text-success" aria-hidden="true">{% icon "user-check" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Who should be restored?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.title }} · Reopened</p>
+      </div>
+    </div>
+
+    <p class="text-sm">
+      {{ count }} applicant{{ count|pluralize }} {{ count|pluralize:"was,were" }} cancelled when this opening last closed. Tick who goes back to the stage they were at before the closure. Each one ticked is emailed that the position reopened; the rest stay Rejected.
+      {% if authority != user %}You're deciding for {{ authority.get_full_name|default:authority.username }}, the designated authority.{% endif %}
+    </p>
+
+    {% if restore_error %}
+    <div role="alert" class="alert alert-error alert-soft" data-testid="restore-error">{% icon "triangle-alert" "size-5 shrink-0" %}<span>{{ restore_error }}</span></div>
+    {% endif %}
+
+    <fieldset>
+      <legend class="sr-only">Applicants to restore</legend>
+      <ul class="grid gap-2" data-testid="restore-choices">
+        {% for choice in choices %}
+        {% with application=choice.application %}
+        <li>
+          <label class="flex flex-wrap items-center gap-3 rounded-box border p-3 transition-colors motion-reduce:transition-none {% if choice.selectable %}cursor-pointer border-base-300 hover:bg-base-200/60 has-checked:border-success has-checked:bg-success/5{% else %}border-dashed border-base-300 opacity-70{% endif %}" data-testid="restore-choice">
+            <input type="checkbox" name="applications" value="{{ application.pk }}" class="checkbox checkbox-success checkbox-sm" {% if not choice.selectable %}disabled{% elif application.pk|stringformat:"s" in ticked %}checked{% endif %} data-testid="restore-checkbox-{{ application.pk }}">
+            {% include "partials/avatar.html" with user=application.candidate size="w-8" text="text-xs" %}
+            <span class="min-w-0 flex-1">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold break-words">{{ application.candidate.full_name }}</span>
+                {% if application.candidate.is_archived %}{% include "candidates/partials/archived_badge.html" %}{% endif %}
+              </span>
+              {% if choice.refusal %}
+              <span class="block text-xs text-error" data-testid="restore-refusal">{{ choice.refusal }}{% if application.candidate.is_archived %} · <a href="{{ application.candidate.get_absolute_url }}" class="link">Open their page</a>{% endif %}</span>
+              {% else %}
+              <span class="block text-xs break-all opacity-60">{{ application.candidate.email }}</span>
+              {% endif %}
+            </span>
+            <span class="inline-flex items-center gap-1.5 text-sm">
+              <span class="badge badge-sm badge-error badge-soft">Rejected</span>
+              {% icon "arrow-right" "size-4 opacity-60" %}
+              <span class="badge badge-sm badge-info badge-soft whitespace-nowrap" data-testid="restore-stage">{{ choice.stage.label }}</span>
+            </span>
+          </label>
+        </li>
+        {% endwith %}
+        {% endfor %}
+      </ul>
+      {% for error in form.applications.errors %}<p class="mt-2 text-sm text-error" data-testid="error-applications">{{ error }}</p>{% endfor %}
+      {% for error in form.decision.errors %}<p class="mt-2 text-sm text-error" data-testid="error-decision">{{ error }}</p>{% endfor %}
+    </fieldset>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <button type="submit" name="decision" value="none" class="btn btn-ghost" data-testid="restore-none">Don't restore anyone</button>
+      {% if selectable_count %}
+      <button type="submit" name="decision" value="restore" class="btn btn-success gap-2" data-testid="confirm-restore">
+        {% icon "user-check" "size-4" %} Restore ticked applicants
+      </button>
+      {% endif %}
+    </div>
+  </form>
+</section>
+{% endwith %}
+{% endblock %}

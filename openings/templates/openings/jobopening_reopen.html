@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Reopen {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+{% with active=active_applications|length authority=opening.designated_authority %}
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-success" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-success/15 text-success" aria-hidden="true">{% icon "lock-open" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Reopen {{ opening.title }}?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.department }}{% if opening.location %} · {{ opening.location }}{% endif %} · Closed</p>
+      </div>
+    </div>
+
+    <ul class="grid gap-2 text-sm" data-testid="reopen-effects">
+      <li class="flex items-start gap-2">{% icon "lock-open" "size-4 mt-0.5 shrink-0 opacity-70" %} It takes new applications again.</li>
+      {% if opening.grace_period_running %}
+      <li class="flex items-start gap-2" data-testid="reopen-clears-grace">{% icon "hourglass" "size-4 mt-0.5 shrink-0 text-warning" %} The grace period ending {{ opening.grace_period_ends|date:"M j, Y" }} is cleared, and candidates get no more reminders about it.</li>
+      {% elif opening.has_grace_period %}
+      <li class="flex items-start gap-2" data-testid="reopen-clears-grace">{% icon "hourglass" "size-4 mt-0.5 shrink-0 opacity-70" %} The ended grace period is cleared.</li>
+      {% endif %}
+      {% if active %}
+      <li class="flex items-start gap-2">{% icon "square-kanban" "size-4 mt-0.5 shrink-0 opacity-70" %} {{ active }} applicant{{ active|pluralize }} still in progress carr{{ active|pluralize:"ies,y" }} on as before.</li>
+      {% endif %}
+      {% if cancelled_count %}
+      <li class="flex items-start gap-2 font-medium" data-testid="reopen-restore">{% icon "user-check" "size-4 mt-0.5 shrink-0 text-success" %}
+        <span>{{ cancelled_count }} applicant{{ cancelled_count|pluralize }} cancelled when it closed can be restored to where they were.
+        {% if user|can_decide_closure:opening %}You choose who next.{% else %}{{ authority.get_full_name|default:authority.username }}, the designated authority, will see it in Needs attention to choose who.{% endif %}</span>
+      </li>
+      {% endif %}
+    </ul>
+
+    <div>
+      <label class="fieldset-legend pt-0" for="{{ form.note.id_for_label }}">{{ form.note.label }} <span class="font-normal opacity-60">(optional)</span></label>
+      {{ form.note }}
+      {% for error in form.note.errors %}<p class="mt-1 text-sm text-error" data-testid="error-note">{{ error }}</p>{% empty %}<p class="label mt-1 whitespace-normal">{{ form.note.help_text }}</p>{% endfor %}
+    </div>
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-success gap-2" data-testid="confirm-reopen">
+        {% icon "lock-open" "size-4" %} Reopen {{ opening.title }}
+      </button>
+    </div>
+  </form>
+</section>
+{% endwith %}
+{% endblock %}

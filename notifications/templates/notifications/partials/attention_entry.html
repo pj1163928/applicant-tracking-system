@@ -1,0 +1,2 @@
+{% comment %}One Needs attention item of either kind. Expects `item` (an AttentionItem or a RestoreItem).{% endcomment %}
+{% if item.kind == "restore" %}{% include "notifications/partials/restore_item.html" %}{% else %}{% include "notifications/partials/attention_item.html" %}{% endif %}

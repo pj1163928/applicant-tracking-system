@@ -1,0 +1,1 @@
+Good news about your application for {{ opening.title }}

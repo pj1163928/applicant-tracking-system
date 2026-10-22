@@ -26,6 +26,8 @@ from openings.forms import (
     GracePeriodForm,
     JobOpeningCreateForm,
     JobOpeningForm,
+    ReopenOpeningForm,
+    RestoreApplicationsForm,
     SkillAttachForm,
 )
 from openings.in_progress import STATUS_ORDER, in_progress_openings
@@ -42,6 +44,10 @@ from openings.services import (
     extend_bounds,
     extend_grace_period,
     plural_days,
+    reopen_opening,
+    restorable_cancellations,
+    restore_applications,
+    restore_choices,
     set_grace_period,
 )
 
@@ -95,7 +101,25 @@ class OpeningDetailView(DetailView):
             | {"applications": applications}
             | skills_section_context(self.object)
             | closure_context(self.object)
+            | restore_context(self.object)
         )
+
+
+def restore_context(opening: JobOpening) -> dict:
+    """What an opening's restore panel shows, once it has been reopened.
+
+    ``restorable_count`` is how many applicants its latest closure cancelled
+    who could still be restored; ``restore_pending`` says whether nobody has
+    made the restore choice since it reopened (so it is in Needs attention).
+    """
+    if not opening.is_open:
+        return {"restorable_count": 0, "restore_pending": False}
+    return {
+        "restorable_count": restorable_cancellations(opening).count(),
+        "restore_pending": JobOpening.objects.awaiting_restore_choice()
+        .filter(pk=opening.pk)
+        .exists(),
+    }
 
 
 def closure_context(opening: JobOpening) -> dict:
@@ -188,6 +212,59 @@ class OpeningCloseView(RoleRequiredMixin, DetailView):
             status += (
                 f" {plural(active, 'applicant')} still in progress can keep moving, and "
                 f"{who} what happens to them."
+            )
+        messages.success(request, status)
+        return redirect(opening)
+
+
+class OpeningReopenView(RoleRequiredMixin, DetailView):
+    """Reopen a closed opening, from a confirmation page with an optional note.
+
+    Admins, Recruiters and Hiring Managers only (anyone who may close it);
+    others get 403 for GET and POST. Goes through ``reopen_opening()``. Someone
+    who may decide its closure goes straight on to choosing who to restore;
+    anyone else leaves that choice to the designated authority's Needs attention.
+    """
+
+    allowed_roles = OPENING_MANAGER_ROLES
+    queryset = JobOpening.objects.select_related("designated_authority")
+    context_object_name = "opening"
+    template_name = "openings/jobopening_reopen.html"
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.is_open:
+            messages.info(request, f"{self.object.title} is already open.")
+            return redirect(self.object)
+        return self.render_to_response(self.get_context_data(form=ReopenOpeningForm()))
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | {
+            "active_applications": closure_context(self.object)["active_applications"],
+            "cancelled_count": restorable_cancellations(self.object).count(),
+        }
+
+    def post(self, request, *args, **kwargs):
+        self.object = opening = self.get_object()
+        form = ReopenOpeningForm(request.POST)
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(form=form))
+        try:
+            reopen_opening(opening, by=request.user, note=form.cleaned_data["note"])
+        except ValidationError as error:
+            messages.info(request, error.messages[0])
+            return redirect(opening)
+        status = f"Reopened {opening.title}. It takes new applications again."
+        cancelled = restorable_cancellations(opening).count()
+        if cancelled and can_decide_closure(request.user, opening):
+            messages.success(request, f"{status} Now choose who to restore.")
+            return redirect("openings:restore", opening.pk)
+        if cancelled:
+            authority = opening.designated_authority
+            status += (
+                f" {authority.get_full_name() or authority.username} will see it in Needs "
+                f"attention, to choose which of the {plural(cancelled, 'cancelled applicant')} "
+                "to restore."
             )
         messages.success(request, status)
         return redirect(opening)
@@ -383,6 +460,76 @@ class GracePeriodExtendView(ClosureDeciderMixin, DetailView):
                 )
                 return redirect(opening)
         return self.render_to_response(self.get_context_data(form=form))
+
+
+class OpeningRestoreView(ClosureDeciderMixin, DetailView):
+    """Choose which applicants cancelled at the latest closure go back where they were.
+
+    Users allowed by ``can_decide_closure`` only; everyone else gets 403.
+    Archived candidates are listed but can't be ticked. Goes through
+    ``restore_applications()``, which emails each restored candidate; "Don't
+    restore anyone" records that choice instead. An opening that is closed, or
+    has nobody to restore, sends the user back to it with a message.
+    """
+
+    template_name = "openings/jobopening_restore.html"
+
+    def get(self, request, *args, **kwargs):
+        refusal = self.unavailable()
+        if refusal:
+            messages.info(request, refusal)
+            return redirect(self.object)
+        return self.render_page(RestoreApplicationsForm(choices=self.choices))
+
+    def unavailable(self) -> str:
+        """Why there is nobody to restore here, or "" if there is. Loads ``self.choices``."""
+        opening = self.object
+        if not opening.is_open:
+            return f"{opening.title} is closed. Reopen it before restoring its applicants."
+        self.choices = restore_choices(opening, self.request.user)
+        if not self.choices:
+            return f"Nobody cancelled when {opening.title} last closed is waiting to be restored."
+        return ""
+
+    def render_page(self, form: RestoreApplicationsForm, error: str = ""):
+        ticked = {str(value) for value in form["applications"].value() or []}
+        return self.render_to_response(
+            self.get_context_data(
+                form=form,
+                choices=self.choices,
+                ticked=ticked,
+                restore_error=error,
+                selectable_count=sum(choice.selectable for choice in self.choices),
+            )
+        )
+
+    def post(self, request, *args, **kwargs):
+        opening = self.object
+        refusal = self.unavailable()
+        if refusal:
+            messages.info(request, refusal)
+            return redirect(opening)
+        form = RestoreApplicationsForm(request.POST, choices=self.choices)
+        if not form.is_valid():
+            return self.render_page(form)
+        try:
+            rows = restore_applications(opening, form.cleaned_data["applications"], by=request.user)
+        except ValidationError as error:
+            self.choices = restore_choices(opening, request.user)
+            form = RestoreApplicationsForm(choices=self.choices)
+            return self.render_page(form, error.messages[0])
+        if rows:
+            who = "The candidate has" if len(rows) == 1 else "Each candidate has"
+            messages.success(
+                request,
+                f"Restored {plural(len(rows), 'applicant')} to {opening.title}, each at their "
+                f"stage before the closure. {who} been emailed that the position reopened.",
+            )
+        else:
+            messages.success(
+                request, f"Recorded that nobody cancelled from {opening.title} will be restored."
+            )
+        return redirect(opening)
 
 
 class OpeningCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):

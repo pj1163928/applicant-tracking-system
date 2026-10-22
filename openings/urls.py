@@ -9,6 +9,8 @@ from openings.views import (
     OpeningCreateView,
     OpeningDetailView,
     OpeningListView,
+    OpeningReopenView,
+    OpeningRestoreView,
     OpeningSkillAttachView,
     OpeningSkillDetachView,
     OpeningUpdateView,
@@ -22,6 +24,8 @@ urlpatterns = [
     path("<int:pk>/", OpeningDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", OpeningUpdateView.as_view(), name="update"),
     path("<int:pk>/close/", OpeningCloseView.as_view(), name="close"),
+    path("<int:pk>/reopen/", OpeningReopenView.as_view(), name="reopen"),
+    path("<int:pk>/restore/", OpeningRestoreView.as_view(), name="restore"),
     path(
         "<int:pk>/cancel-remaining/",
         OpeningCancelRemainingView.as_view(),

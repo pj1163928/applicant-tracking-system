@@ -75,6 +75,11 @@ SEED_CANDIDATES: tuple[SeedCandidate, ...] = (
     SeedCandidate("Jade", "Okafor", "jade.okafor@example.com", "555-0110"),
     # Phase 9: withdraws from Backend Developer, then is archived (SEED_ARCHIVED).
     SeedCandidate("Kai", "Moreno", "kai.moreno@example.com", "", "Moved abroad; not looking now."),
+    # Phase 13: cancelled when UX Researcher closes, then archived, so its restore list
+    # shows an archived applicant who must be unarchived first.
+    SeedCandidate(
+        "Lena", "Park", "lena.park@example.com", "555-0112", "Paused her job search for now."
+    ),
 )
 
 
@@ -215,6 +220,8 @@ SEED_APPLICATIONS: tuple[SeedApplication, ...] = (
     # Phase 10: UX Researcher's applicants, cancelled when it closes (SEED_CLOSURES).
     SeedApplication("dev.sharma@example.com", "UX Researcher", "LinkedIn Jobs"),
     SeedApplication("jade.okafor@example.com", "UX Researcher", "Company careers page"),
+    # Phase 13: a third UX Researcher applicant, archived after the closure cancels her.
+    SeedApplication("lena.park@example.com", "UX Researcher", "Indeed"),
 )
 
 
@@ -286,6 +293,12 @@ SEED_MOVES: tuple[SeedMove, ...] = (
         ((Stage.SCREENING, ""),),
     ),
     SeedMove(
+        "lena.park@example.com",
+        "UX Researcher",
+        "recruiter",
+        ((Stage.SCREENING, ""), (Stage.INTERVIEW, "")),
+    ),
+    SeedMove(
         "elena.rossi@example.com",
         "Product Designer",
         "admin",
@@ -300,10 +313,11 @@ SEED_MOVES: tuple[SeedMove, ...] = (
 )
 
 
-# Phase 9. Seeded candidates archived once all their seeded moves are made, through
-# archive_candidate(). Only a candidate seed has just created is archived, so a
-# re-run never re-archives one that staff have unarchived.
-SEED_ARCHIVED: tuple[str, ...] = ("kai.moreno@example.com",)
+# Phase 9. Seeded candidates archived through archive_candidate() once all their seeded
+# moves are made and (Phase 13) the seeded openings are closed, so Lena's UX Researcher
+# application has been cancelled first. Only a candidate seed has just created is
+# archived, so a re-run never re-archives one that staff have unarchived.
+SEED_ARCHIVED: tuple[str, ...] = ("kai.moreno@example.com", "lena.park@example.com")
 
 
 @dataclass(frozen=True)
@@ -318,7 +332,8 @@ class SeedClosure:
 
 # Phase 10. Closed through close_opening() once every seeded move is made, so each gets
 # its "closed" event. Only an opening seed has just created is closed, so a re-run never
-# closes one again. UX Researcher's applicants are cancelled (two logged emails);
+# closes one again. UX Researcher's applicants are cancelled (three logged emails), so
+# reopening it (Phase 13) offers Dev, Jade and the archived Lena for restoring;
 # QA Analyst still has Ann at Applied, so it waits in the manager's Needs attention.
 # Phase 11: the recruiter, its authority, gives Data Engineer's applicant (Dev, at Applied)
 # a 4-day flag-overdue grace period from the day seed runs, so `process_grace_periods
@@ -341,7 +356,7 @@ SEED_CLOSURES: tuple[SeedClosure, ...] = (
 
 class Command(BaseCommand):
     help = (
-        "Create one demo user per role, plus sample candidates (one archived), sources, "
+        "Create one demo user per role, plus sample candidates (two archived), sources, "
         "openings with skills (four of them closed, one in a grace period), and applications, "
         "some moved along the pipeline."
     )
@@ -381,18 +396,18 @@ class Command(BaseCommand):
             f"{results.count(SKIPPED)} skipped"
         )
         results = [
+            seed_closure(spec, just_created=spec.opening in new_openings) for spec in SEED_CLOSURES
+        ]
+        self.stdout.write(
+            f"Closed openings: {results.count(CREATED)} closed, "
+            f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
+        )
+        results = [
             seed_archived(email, recruiter, just_created=email in new_candidates)
             for email in SEED_ARCHIVED
         ]
         self.stdout.write(
             f"Archived candidates: {results.count(CREATED)} archived, "
-            f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
-        )
-        results = [
-            seed_closure(spec, just_created=spec.opening in new_openings) for spec in SEED_CLOSURES
-        ]
-        self.stdout.write(
-            f"Closed openings: {results.count(CREATED)} closed, "
             f"{results.count(CHECKED)} checked, {results.count(SKIPPED)} skipped"
         )
         self.stdout.write(

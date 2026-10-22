@@ -37,6 +37,10 @@
         <a href="{% url 'openings:close' opening.pk %}" class="btn btn-ghost gap-2" data-testid="opening-close">
           {% icon "lock" "size-4" %} Close opening
         </a>
+        {% else %}
+        <a href="{% url 'openings:reopen' opening.pk %}" class="btn btn-ghost gap-2" data-testid="opening-reopen">
+          {% icon "lock-open" "size-4" %} Reopen opening
+        </a>
         {% endif %}
         {% endif %}
       </div>
@@ -64,6 +68,7 @@
 </section>
 
 {% if not opening.is_open and active_applications %}{% include "openings/partials/closure_panel.html" %}{% endif %}
+{% if restorable_count %}{% include "openings/partials/restore_panel.html" %}{% endif %}
 
 {% include "openings/partials/skills_section.html" %}
 

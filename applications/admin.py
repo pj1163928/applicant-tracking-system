@@ -23,7 +23,7 @@ class ViewOnlyAdmin(admin.ModelAdmin):
 
 class StageChangeInline(admin.TabularInline):
     model = StageChange
-    fields = ["from_stage", "to_stage", "changed_by", "changed_at", "cause", "note"]
+    fields = ["from_stage", "to_stage", "changed_by", "changed_at", "cause", "closure", "note"]
     readonly_fields = fields
     extra = 0
     can_delete = False

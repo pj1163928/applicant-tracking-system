@@ -1,0 +1,12 @@
+{% autoescape off %}Hello {{ candidate.first_name }},
+
+Good news: the {{ opening.title }} position has reopened, and
+your application is back in progress, where it was before the
+position closed.
+
+There's nothing you need to do. Our team will be in touch to
+complete the next step.
+
+Best wishes,
+The hiring team
+{% endautoescape %}

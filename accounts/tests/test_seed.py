@@ -26,7 +26,7 @@ from candidates.services import unarchive_candidate
 from notifications.attention import closures_awaiting_decision
 from notifications.models import CandidateMessage
 from openings.models import JobOpening, OpeningEvent, OpeningSkill, Skill
-from openings.services import extend_grace_period
+from openings.services import extend_grace_period, reopen_opening, restore_choices
 
 pytestmark = pytest.mark.django_db
 
@@ -317,7 +317,8 @@ def test_seed_archives_kai_whose_withdrawn_application_stays_on_the_board():
 
     kai = Candidate.objects.get(email="kai.moreno@example.com")
     assert kai.is_archived and kai.archived_at is not None
-    assert list(Candidate.objects.filter(is_archived=True)) == [kai]
+    archived = Candidate.objects.filter(is_archived=True).values_list("email", flat=True)
+    assert set(archived) == {"kai.moreno@example.com", "lena.park@example.com"}
     application = kai.applications.get()
     assert (application.opening.title, application.stage) == ("Backend Developer", Stage.WITHDRAWN)
 
@@ -397,6 +398,7 @@ def test_seed_closes_four_openings_through_the_closure_flow(
         ("dev.sharma@example.com", CandidateMessage.Kind.CANCELLED),
         ("dev.sharma@example.com", CandidateMessage.Kind.GRACE_PERIOD_SET),
         ("jade.okafor@example.com", CandidateMessage.Kind.CANCELLED),
+        ("lena.park@example.com", CandidateMessage.Kind.CANCELLED),
     ]
     assert OpeningEvent.objects.filter(kind=OpeningEvent.Kind.APPLICATIONS_CANCELLED).count() == 1
 
@@ -419,11 +421,12 @@ def test_seed_closes_four_openings_through_the_closure_flow(
     items = closures_awaiting_decision(manager)
     assert [(i.opening.title, i.assigned_to_you) for i in items] == [("QA Analyst", True)]
     assert closures_awaiting_decision(User.objects.get(username="recruiter")) == []
-    # Three emails to candidates, and one to the authority for each closure with applicants.
+    # Four emails to candidates, and one to the authority for each closure with applicants.
     assert sorted(m.to[0] for m in mailoutbox) == [
         "dev.sharma@example.com",
         "dev.sharma@example.com",
         "jade.okafor@example.com",
+        "lena.park@example.com",
         "manager@example.com",
         "manager@example.com",
         "recruiter@example.com",
@@ -456,3 +459,20 @@ def test_rerunning_seed_never_recloses_an_opening_staff_reopened():
 
     assert JobOpening.objects.get(title="QA Analyst").is_open
     assert OpeningEvent.objects.count() == before
+
+
+def test_seed_leaves_ux_researcher_ready_to_reopen_with_an_archived_applicant_to_show():
+    call_command("seed")
+
+    ux = JobOpening.objects.get(title="UX Researcher")
+    manager = User.objects.get(username="manager")
+    reopen_opening(ux, by=User.objects.get(username="recruiter"))
+    choices = {
+        choice.application.candidate.email: (choice.stage, choice.refusal)
+        for choice in restore_choices(ux, manager)
+    }
+    assert choices == {
+        "dev.sharma@example.com": (Stage.APPLIED, ""),
+        "jade.okafor@example.com": (Stage.SCREENING, ""),
+        "lena.park@example.com": (Stage.INTERVIEW, "Archived; unarchive first"),
+    }

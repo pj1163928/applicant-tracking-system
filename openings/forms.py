@@ -3,9 +3,15 @@ from django.contrib.auth.models import User
 
 from accounts.permissions import eligible_authorities
 from accounts.roles import role_label
+from applications.models import Application
 from config.forms import DaisyUIFormMixin
 from openings.models import JobOpening
-from openings.services import GRACE_DAYS_MAX, GRACE_DAYS_MIN, SKILL_NAME_MAX_LENGTH
+from openings.services import (
+    GRACE_DAYS_MAX,
+    GRACE_DAYS_MIN,
+    SKILL_NAME_MAX_LENGTH,
+    RestoreChoice,
+)
 
 
 class AuthorityChoiceField(forms.ModelChoiceField):
@@ -165,3 +171,62 @@ class ExtendGracePeriodForm(DaisyUIFormMixin, forms.Form):
         ),
         help_text="Shown in the opening's history.",
     )
+
+
+class ReopenOpeningForm(DaisyUIFormMixin, forms.Form):
+    """Confirm reopening an opening, with an optional note for its event history."""
+
+    CLASSES = {"note": ("textarea w-full", "textarea-error")}
+
+    note = forms.CharField(
+        label="Note",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={"rows": 3, "placeholder": "For example: Budget approved after all."}
+        ),
+        help_text="Shown in the opening's history.",
+    )
+
+
+RESTORE, RESTORE_NONE = "restore", "none"
+
+
+class RestoreApplicationsForm(DaisyUIFormMixin, forms.Form):
+    """Tick which applicants cancelled at the latest closure go back where they were.
+
+    The choices *and* the validation come from the selectable
+    ``openings.services.restore_choices()``, so a hand-made POST naming an
+    archived candidate, or anyone the closure didn't cancel, fails validation.
+    ``restore_applications()`` checks the same rules again. The page draws the
+    checklist itself, disabled rows included, and its two buttons send ``decision``.
+    """
+
+    applications = forms.ModelMultipleChoiceField(
+        queryset=Application.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        error_messages={
+            "invalid_choice": "Only applicants listed here who can be restored can be ticked.",
+            "invalid_pk_value": "Only applicants listed here who can be restored can be ticked.",
+        },
+    )
+    decision = forms.ChoiceField(
+        choices=[(RESTORE, "Restore"), (RESTORE_NONE, "Don't restore anyone")],
+        error_messages={"required": "Choose whether to restore anyone."},
+    )
+
+    def __init__(self, *args, choices: list[RestoreChoice], **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        selectable = [choice.application.pk for choice in choices if choice.selectable]
+        self.fields["applications"].queryset = Application.objects.filter(pk__in=selectable)
+
+    def clean(self) -> dict:
+        cleaned = super().clean()
+        if cleaned.get("decision") == RESTORE_NONE:
+            cleaned["applications"] = []
+        elif "applications" in cleaned and not cleaned["applications"]:
+            self.add_error(
+                "applications", "Tick at least one applicant, or choose Don't restore anyone."
+            )
+        return cleaned

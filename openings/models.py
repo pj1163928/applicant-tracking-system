@@ -4,8 +4,19 @@ and their event history."""
 from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.db import models
-from django.db.models import Case, Count, IntegerField, Q, Value, When
-from django.db.models.functions import Lower
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Lower
 from django.urls import reverse
 
 from applications.stages import ACTIVE_STAGES
@@ -146,6 +157,46 @@ class JobOpeningQuerySet(models.QuerySet):
             grace_expired_on__isnull=True,
         )
 
+    def awaiting_restore_choice(self) -> "JobOpeningQuerySet":
+        """Return the reopened openings where someone must still choose which applicants to restore.
+
+        That is an open opening reopened since its latest closure, with no
+        "Applicants restored" event since that reopening, and at least one
+        application the latest closure cancelled that is still at Rejected
+        because of it. Each is annotated with ``restorable_count``, archived
+        candidates included (they are listed, but must be unarchived first).
+        """
+        from applications.models import StageChange  # applications.models imports this module
+
+        def latest(kind: str) -> Subquery:
+            events = OpeningEvent.objects.filter(opening=OuterRef("pk"), kind=kind)
+            return Subquery(events.order_by("-pk").values("pk")[:1])
+
+        restorable = (
+            StageChange.objects.cancellations_to_restore()
+            .filter(closure=OuterRef("_latest_closed"))
+            .order_by()
+            .values("closure")
+            .annotate(count=Count("pk"))
+            .values("count")
+        )
+        restored_since = OpeningEvent.objects.filter(
+            opening=OuterRef("pk"),
+            kind=OpeningEventKind.APPLICATIONS_RESTORED,
+            pk__gt=OuterRef("_latest_reopened"),
+        )
+        return (
+            self.filter(status=OpeningStatus.OPEN)
+            .annotate(
+                _latest_closed=latest(OpeningEventKind.CLOSED),
+                _latest_reopened=latest(OpeningEventKind.REOPENED),
+            )
+            .filter(_latest_reopened__gt=F("_latest_closed"))
+            .exclude(Exists(restored_since))
+            .annotate(restorable_count=Coalesce(Subquery(restorable), 0))
+            .filter(restorable_count__gt=0)
+        )
+
     def open_first(self) -> "JobOpeningQuerySet":
         """Order open openings before closed ones, then by title."""
         return self.annotate(
@@ -279,6 +330,8 @@ class OpeningEventKind(models.TextChoices):
     GRACE_PERIOD_SET = "grace_period_set", "Grace period set"
     GRACE_PERIOD_EXTENDED = "grace_period_extended", "Grace period extended"
     GRACE_PERIOD_EXPIRED = "grace_period_expired", "Grace period ended"
+    REOPENED = "reopened", "Reopened"
+    APPLICATIONS_RESTORED = "applications_restored", "Applicants restored"
 
 
 class OpeningEvent(models.Model):
