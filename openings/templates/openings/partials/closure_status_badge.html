@@ -1,0 +1,8 @@
+{% comment %}A closed opening's status in the in-progress view. Expects `status` (openings.grace.ClosureStatus).{% endcomment %}
+{% if status == "overdue" %}
+<span class="badge badge-sm badge-error gap-1 whitespace-nowrap" data-testid="closure-status" data-status="{{ status }}">{% icon "triangle-alert" "size-3.5" %}{{ status.label }}</span>
+{% elif status == "in_grace_period" %}
+<span class="badge badge-sm badge-info badge-soft gap-1 whitespace-nowrap" data-testid="closure-status" data-status="{{ status }}">{% icon "hourglass" "size-3.5" %}{{ status.label }}</span>
+{% else %}
+<span class="badge badge-sm badge-warning badge-soft gap-1 whitespace-nowrap" data-testid="closure-status" data-status="{{ status }}">{% icon "bell" "size-3.5" %}{{ status.label }}</span>
+{% endif %}

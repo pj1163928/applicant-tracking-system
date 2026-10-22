@@ -10,11 +10,12 @@ designated authority of come first.
 from dataclasses import dataclass
 
 from accounts.permissions import (
+    CLOSURE_DECIDER_ROLES,
     can_be_designated_authority,
     can_decide_closure,
     is_eligible_authority_of,
 )
-from accounts.roles import AnyUser
+from accounts.roles import AnyUser, has_role
 from openings.models import JobOpening, OpeningEvent
 from openings.services import latest_closure
 
@@ -67,3 +68,38 @@ def attention_count(user: AnyUser) -> int:
     if not can_be_designated_authority(user):
         return 0
     return JobOpening.objects.awaiting_closure_decision().filter(designated_authority=user).count()
+
+
+@dataclass(frozen=True)
+class AttentionSummary:
+    """How many closures await a decision from a user, split as the panel groups them.
+
+    ``yours`` is the navigation badge's number (``attention_count``);
+    ``others`` are the ones an Admin or Hiring Manager may decide for someone
+    else, and ``decides_for_others`` says whether the user may do that at all.
+    """
+
+    yours: int
+    others: int
+    decides_for_others: bool
+
+    @property
+    def total(self) -> int:
+        return self.yours + self.others
+
+
+def attention_summary(user: AnyUser) -> AttentionSummary:
+    """Return the counts behind the navigation's Needs attention badge and its breakdown.
+
+    The same split as ``closures_awaiting_decision`` (``assigned_to_you`` or
+    not), counted in the database instead of listing every opening.
+    """
+    decides_for_others = has_role(user, *CLOSURE_DECIDER_ROLES)
+    others = 0
+    if decides_for_others:
+        others = (
+            JobOpening.objects.awaiting_closure_decision()
+            .exclude(designated_authority=user)
+            .count()
+        )
+    return AttentionSummary(attention_count(user), others, decides_for_others)

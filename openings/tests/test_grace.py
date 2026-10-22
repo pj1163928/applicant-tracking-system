@@ -9,9 +9,15 @@ from datetime import date
 
 import pytest
 
-from openings.grace import due_reminder, grace_period_has_ended
+from openings.grace import ClosureStatus, closure_status, due_reminder, grace_period_has_ended
+from openings.models import GraceExpiryAction
 
 ENDS = date(2026, 11, 10)
+AWAITING = ClosureStatus.AWAITING_DECISION
+IN_GRACE = ClosureStatus.IN_GRACE_PERIOD
+OVERDUE = ClosureStatus.OVERDUE
+FLAG = GraceExpiryAction.FLAG_OVERDUE
+AUTO = GraceExpiryAction.AUTO_CANCEL
 
 # Written out by hand: (when it was set or last extended, today, the reminder due).
 # The 3-day reminder falls on Nov 7 and the 1-day one on Nov 9. A reminder dated on
@@ -57,3 +63,42 @@ def test_due_reminder_matches_the_hand_written_schedule(set_on, today, expected)
 )
 def test_a_grace_period_ends_on_its_end_date_not_the_day_after(today, expected):
     assert grace_period_has_ended(ends=ENDS, today=today) is expected
+
+
+# Written out by hand: (end date, expiry action, the day process_grace_periods ended it,
+# today, the status). Nov 10 is the end date. "In grace period" lasts only while today is
+# before it; from the end date itself, not the day after, a flag-overdue grace period is
+# overdue whether or not the daily run has handled it, and so is an auto-cancel one the
+# run hasn't cancelled yet. Once the run has auto-cancelled, anyone put back in progress
+# leaves the opening awaiting a decision.
+CLOSURE_STATUSES = [
+    # No grace period: awaiting a decision, whatever the day.
+    (None, "", None, date(2026, 11, 9), AWAITING),
+    (None, "", None, date(2026, 11, 10), AWAITING),
+    (None, "", None, date(2026, 11, 11), AWAITING),
+    # Flag overdue, not yet handled by the daily run.
+    (ENDS, FLAG, None, date(2026, 11, 3), IN_GRACE),  # a week to go
+    (ENDS, FLAG, None, date(2026, 11, 9), IN_GRACE),  # the day before the end
+    (ENDS, FLAG, None, date(2026, 11, 10), OVERDUE),  # the end date itself
+    (ENDS, FLAG, None, date(2026, 11, 11), OVERDUE),  # the day after
+    # Flag overdue, handled by the daily run on the end date.
+    (ENDS, FLAG, ENDS, date(2026, 11, 10), OVERDUE),
+    (ENDS, FLAG, ENDS, date(2026, 11, 20), OVERDUE),
+    # Auto-cancel, not yet handled: overdue from the end date, since the cancel is late.
+    (ENDS, AUTO, None, date(2026, 11, 3), IN_GRACE),
+    (ENDS, AUTO, None, date(2026, 11, 9), IN_GRACE),
+    (ENDS, AUTO, None, date(2026, 11, 10), OVERDUE),
+    (ENDS, AUTO, None, date(2026, 11, 11), OVERDUE),
+    # Auto-cancel, already handled: only "cancel now" is left for anyone back in progress.
+    (ENDS, AUTO, ENDS, date(2026, 11, 10), AWAITING),
+    (ENDS, AUTO, ENDS, date(2026, 11, 11), AWAITING),
+    (ENDS, AUTO, ENDS, date(2026, 11, 20), AWAITING),
+    # Years in the past: the status follows the "today" passed in, never the clock.
+    (date(2020, 1, 10), FLAG, None, date(2020, 1, 9), IN_GRACE),
+    (date(2020, 1, 10), FLAG, None, date(2020, 1, 10), OVERDUE),
+]
+
+
+@pytest.mark.parametrize(("ends", "action", "expired_on", "today", "expected"), CLOSURE_STATUSES)
+def test_closure_status_matches_the_hand_written_table(ends, action, expired_on, today, expected):
+    assert closure_status(ends=ends, action=action, expired_on=expired_on, today=today) == expected

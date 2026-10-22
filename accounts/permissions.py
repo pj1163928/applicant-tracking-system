@@ -185,3 +185,16 @@ def can_decide_closure(user: AnyUser, opening: "JobOpening") -> bool:
     so a Recruiter who isn't the authority can close an opening but not decide.
     """
     return has_role(user, *CLOSURE_DECIDER_ROLES) or is_eligible_authority_of(user, opening)
+
+
+# Roles that open the in-progress view of closed openings, besides Admins: none.
+IN_PROGRESS_VIEWER_ROLES: tuple[str, ...] = ()
+
+
+def can_view_in_progress(user: AnyUser) -> bool:
+    """Return True if the user may open the in-progress view of closed openings: an active Admin.
+
+    No role grants it, and neither does ``is_staff``. Every opening it lists is
+    still visible to everyone on its own page.
+    """
+    return has_role(user, *IN_PROGRESS_VIEWER_ROLES)

@@ -77,3 +77,9 @@ def can_retire_skills(user: roles.AnyUser) -> bool:
 def can_decide_closure(user: roles.AnyUser, opening) -> bool:
     """Show closure decision actions: ``{% if user|can_decide_closure:opening %}``."""
     return permissions.can_decide_closure(user, opening)
+
+
+@register.filter
+def can_view_in_progress(user: roles.AnyUser) -> bool:
+    """Show the in-progress view's link: ``{% if user|can_view_in_progress %}``."""
+    return permissions.can_view_in_progress(user)

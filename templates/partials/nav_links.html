@@ -2,8 +2,11 @@
 Main navigation, shared by the top bar and the small-screen sidebar.
 Each later phase adds one <li> for its section, marking it active with
 request.resolver_match.namespace == "<app>" (for example "candidates").
+Expects `attention` (notifications.attention.AttentionSummary) and, for Admins,
+`progress` (openings.in_progress.InProgressCounts), both from base.html. Their
+breakdowns show as a hover popup in the top bar and as a line in the sidebar.
 {% endcomment %}
-{% load notifications_tags %}
+{% load accounts_tags %}
 {% with view=request.resolver_match.view_name %}
 <li>
   <a href="{% url 'accounts:home' %}" class="{% if view == 'accounts:home' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if view == 'accounts:home' %} aria-current="page"{% endif %}>
@@ -26,13 +29,37 @@ request.resolver_match.namespace == "<app>" (for example "candidates").
     {% icon "signpost" "size-5" %} Sources
   </a>
 </li>
-{% attention_count user as attention %}
 <li>
-  <a href="{% url 'notifications:attention' %}" class="{% if section == 'notifications' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'notifications' %} aria-current="page"{% endif %} data-testid="nav-attention">
+  <a href="{% url 'notifications:attention' %}" class="group relative flex flex-wrap items-center {% if section == 'notifications' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'notifications' %} aria-current="page"{% endif %} data-testid="nav-attention">
     {% icon "bell" "size-5" %} Needs attention
-    {% if attention %}<span class="badge badge-sm badge-warning" data-testid="attention-count" aria-label="{{ attention }} waiting on you">{{ attention }}</span>{% endif %}
+    {% if attention.yours %}<span class="badge badge-sm badge-warning" data-testid="attention-count" aria-label="{{ attention.yours }} waiting on you">{{ attention.yours }}</span>{% endif %}
+    {% if attention.total %}
+    <span class="nav-popup" aria-hidden="true" data-testid="attention-breakdown">
+      <span class="nav-popup-title">Needs attention</span>
+      <span class="nav-popup-row"><span>Assigned to you</span><span class="badge badge-sm {% if attention.yours %}badge-warning{% else %}badge-ghost{% endif %}">{{ attention.yours }}</span></span>
+      {% if attention.decides_for_others %}<span class="nav-popup-row"><span>Others you can decide for</span><span class="badge badge-sm badge-ghost">{{ attention.others }}</span></span>{% endif %}
+    </span>
+    <span class="nav-breakdown" data-testid="attention-breakdown-line">{{ attention.yours }} yours{% if attention.decides_for_others %} · {{ attention.others }} other{{ attention.others|pluralize }}{% endif %}</span>
+    {% endif %}
   </a>
 </li>
+{% if user|can_view_in_progress %}
+<li>
+  <a href="{% url 'in_progress:list' %}" class="group relative flex flex-wrap items-center {% if section == 'in_progress' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'in_progress' %} aria-current="page"{% endif %} data-testid="nav-in-progress">
+    {% icon "clipboard-list" "size-5" %} In progress
+    {% if progress.to_act_on %}<span class="badge badge-sm {% if progress.overdue %}badge-error{% else %}badge-warning{% endif %}" data-testid="nav-in-progress-count" aria-label="{{ progress.to_act_on }} need{{ progress.to_act_on|pluralize:'s,' }} action{% if progress.overdue %}, {{ progress.overdue }} overdue{% endif %}">{{ progress.to_act_on }}</span>{% endif %}
+    {% if progress.total %}
+    <span class="nav-popup" aria-hidden="true" data-testid="in-progress-breakdown">
+      <span class="nav-popup-title">In progress</span>
+      <span class="nav-popup-row"><span>Overdue</span><span class="badge badge-sm {% if progress.overdue %}badge-error{% else %}badge-ghost{% endif %}">{{ progress.overdue }}</span></span>
+      <span class="nav-popup-row"><span>Awaiting decision</span><span class="badge badge-sm {% if progress.awaiting_decision %}badge-warning{% else %}badge-ghost{% endif %}">{{ progress.awaiting_decision }}</span></span>
+      <span class="nav-popup-row"><span>In grace period <span class="opacity-60">(not counted)</span></span><span class="badge badge-sm badge-ghost">{{ progress.in_grace_period }}</span></span>
+    </span>
+    <span class="nav-breakdown" data-testid="in-progress-breakdown-line">{{ progress.overdue }} overdue · {{ progress.awaiting_decision }} awaiting · {{ progress.in_grace_period }} in grace</span>
+    {% endif %}
+  </a>
+</li>
+{% endif %}
 <li>
   <a href="{% url 'skills:list' %}" class="{% if section == 'skills' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'skills' %} aria-current="page"{% endif %}>
     {% icon "graduation-cap" "size-5" %} Skills

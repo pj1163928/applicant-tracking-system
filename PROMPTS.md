@@ -28,6 +28,54 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-21 — Applicant Tracking System: Phase 12/14, Admin in-progress view
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 12`.
+2. "Looks good just make sure it sticks within these boundaries: Awaiting decision:" (sent unfinished and interrupted, then sent again in full as prompt 3).
+3. "Looks good just make sure it sticks within these boundaries: Awaiting decision:: no grace period, or an auto-cancel grace period that has already expired. In grace period: a grace period exists and today < ends. overdue: today >= ends and the grace period's action is flag-overdue or auto-cancel has not yet been processed. End-date boundary: Opening becomes overdue on the end date itself, not the following day. Keep closure_status() pure and deterministic: should only depend on its arguments with no database or clock access."
+4. "Looks good continue onto development"
+5. "Ok looks good I would like to add a small feature for both in proress and needs attention since they are rather important, I would like to have ta quick number popup showing how many messages they have in each category. That way they have a visual on anything they may need to do."
+6. Answered my question on the popup's style: "Badge + breakdown (Recommended)".
+7. Answered my question on what the badge counts: "Only things to act on (Recommended)".
+
+### Summary
+
+- **Outcome:** Phase 12 is built.
+  - Admins have an In progress page at `/in-progress/` (`in_progress:list`). It lists every closed opening with at least one active applicant, showing the designated authority, the active count and a status (Awaiting decision, In grace period or Overdue), plus a link to the opening's closure panel. Overdue openings come first, then Awaiting decision, then In grace period, and a row of counts per status sits above the list.
+  - Everyone else gets 403, and only Admins see the nav link.
+  - `uv run pytest`: 920 passed (44 new). `uv run ruff check .` and `uv run ruff format .` are clean. No migrations, and the seed is unchanged.
+- **Follow-up (prompts 5–7):** nav counts for Needs attention and In progress. Each link carries a badge counting only what needs action: Needs attention counts the closures assigned to you, as before; In progress (Admins) counts Overdue + Awaiting decision and turns red when anything is overdue. In the top bar, hovering or keyboard-focusing a link opens a popup with the breakdown by category; the sidebar shows the same numbers as a line under the link instead, because phones have no hover. That replaced my mockup's "tap and hold", since a long press on a link opens the browser's own menu. Prompt 5's "looks good" was taken as keeping the `--today` behavior as it is. `uv run pytest`: 936 passed (16 more); ruff clean.
+  - `notifications/attention.py`: `AttentionSummary` and `attention_summary(user)` (yours, others, `decides_for_others`), counted in the database. `notifications_tags`: `attention_summary` replaces the unused `attention_count` tag.
+  - `openings/in_progress.py`: `InProgressCounts` (`to_act_on`, `total`), `in_progress_counts(*, today=None)` in one query, and `opening_status()`, now shared with `in_progress_openings`. New `openings/templatetags/in_progress_tags.py`.
+  - `templates/base.html` works out both counts once for the two menus; `templates/partials/nav_links.html` renders the badges, popups and sidebar lines; `assets/css/source.css` adds `.nav-popup`, `.nav-popup-title`, `.nav-popup-row` and `.nav-breakdown`.
+  - Tests: the summary against the panel's grouping for every role, the popups and sidebar lines, the In progress badge's number and colour, a grace period alone (a breakdown but no badge), and nothing in progress. `CLAUDE.md` documents the nav-count convention.
+- **Changes:**
+  - `openings/grace.py`: `ClosureStatus` and the pure `closure_status(*, ends, action, expired_on, today)`, built on `grace_period_has_ended`. The module docstring now mentions the expiry action.
+  - `openings/models.py`: new `closed_with_active_applications()`; `awaiting_closure_decision()` now builds on it.
+  - `openings/in_progress.py`: new. `InProgressItem`, `STATUS_ORDER` and `in_progress_openings(*, today=None)`.
+  - `accounts/permissions.py`: `IN_PROGRESS_VIEWER_ROLES = ()` and `can_view_in_progress` (active Admins only). `accounts/templatetags/accounts_tags.py`: the matching filter.
+  - `openings/views.py`: `InProgressView`. `openings/in_progress_urls.py`: new, mounted at `/in-progress/` in `config/urls.py`.
+  - Templates: `openings/in_progress.html`, `openings/partials/in_progress_item.html` and `openings/partials/closure_status_badge.html`, plus an Admin-only `<li>` in `templates/partials/nav_links.html`.
+  - Tests: the status table in `openings/tests/test_grace.py`, the new `openings/tests/test_in_progress.py` (listing and page), and the permission tests in `accounts/tests/test_permissions.py`.
+  - `CLAUDE.md`: the in-progress conventions, the new rule and its filter. `plans/applicant-tracking-system.md`: all four Phase 12 criteria ticked, with a note recording the boundaries from prompt 3.
+- **TDD:** one cycle, the plan's candidate. `closure_status` was checked against an 18-row hand-written table covering no grace period, the day before the end, the end date and the days after, both expiry actions, before and after the daily run, and two 2020 rows proving it follows the `today` passed in rather than the clock. It went RED on assertions against a stub (12 of 18 rows failed), was approved, then went GREEN; the openings and notifications tests (352) still passed.
+- **Decisions:**
+  - The status uses the day passed in, so the Admin view catches a late or missed daily run.
+  - The view lives in the openings app with its own `in_progress:` namespace, the same way `sources:` and `skills:` do.
+  - The page uses a card list in the style of Needs attention (it works at 360px).
+  - In grace period rows show the days left and what happens at the end. A missed auto-cancel says "Check that the daily grace-period run is working."
+- **Deviations:**
+  - I had recommended Overdue for an auto-cancel grace period past its end date that the daily run hasn't handled yet. The user confirmed that and wrote out all four boundaries explicitly (prompt 3); the test table follows them row for row.
+  - A follow-up question to the user, raised while writing the browser guide: a `process_grace_periods --today` demo in the future marks a flag-overdue opening overdue (Needs attention shows the Overdue badge), but this page, using the real date, still says In grace period, because the boundaries make `today < ends` win.
+- **Sideways:**
+  - My first edit command again began with a stray `cat >`, which waited on standard input until it timed out (the same mistake as Phase 11). I stopped it. It had written nothing to the project, only an empty `scratch_edit.py` in AppData\Local, which I deleted. I then made the edit with the Edit tool.
+  - `git status` showed `HANDOFF.md` deleted partway through the session. None of my commands touched it, so I left it alone and flagged it to the user.
+  - I first put the new permission rule at the top of `accounts/permissions.py`, then moved it after `can_decide_closure`, with the other closure rules.
+  - I removed an assertion that couldn't fail (`"Overdue UX Researcher" not in words`) before the first run, and dropped `ClosureStatus` from the view context once the templates compared status strings.
+  - The new listing tests passed on their first run, so I broke the code on purpose twice (removing the status sort, and listing open openings too). Each break failed two tests, and I restored both files afterwards.
+
 ## 2026-10-21 — Applicant Tracking System: Phase 11/14, Grace periods and reminders
 
 ### Prompts

@@ -1,4 +1,4 @@
-"""Template tags for notifications: the Needs attention count in the navigation."""
+"""Template tags for notifications: the Needs attention counts in the navigation."""
 
 from django import template
 
@@ -9,6 +9,6 @@ register = template.Library()
 
 
 @register.simple_tag
-def attention_count(user: AnyUser) -> int:
-    """How many decisions wait on ``user``: ``{% attention_count user as count %}``."""
-    return attention.attention_count(user)
+def attention_summary(user: AnyUser) -> attention.AttentionSummary:
+    """The badge's count and its breakdown: ``{% attention_summary user as summary %}``."""
+    return attention.attention_summary(user)

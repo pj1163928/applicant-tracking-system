@@ -1,0 +1,33 @@
+{% comment %}One closed opening in the in-progress view. Expects `item` (openings.in_progress.InProgressItem).{% endcomment %}
+{% with opening=item.opening count=item.opening.active_count status=item.status %}
+<li class="animate-rise motion-reduce:animate-none rounded-box border {% if status == 'overdue' %}border-error/40{% else %}border-base-300{% endif %} bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="in-progress-item" data-status="{{ status }}">
+  <div class="flex flex-wrap items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-2">
+        <a href="{{ opening.get_absolute_url }}" class="link link-hover font-semibold break-words" data-testid="in-progress-title">{{ opening.title }}</a>
+        {% include "openings/partials/closure_status_badge.html" %}
+        <span class="badge badge-sm badge-ghost" data-testid="in-progress-active-count">{{ count }} still in progress</span>
+      </p>
+      <p class="mt-1 text-sm opacity-70">
+        {{ opening.department }}
+        {% if item.closed %}· Closed {{ item.closed.at|date:"M j, Y" }} by {{ item.closed.by.get_full_name|default:item.closed.by.username }}{% endif %}
+      </p>
+      <p class="mt-1 text-sm {% if status == 'overdue' %}text-error{% endif %}" data-testid="in-progress-detail">
+        {% if status == "in_grace_period" %}
+          Grace period ends {{ opening.grace_period_ends|date:"M j, Y" }} · {{ item.days_left }} day{{ item.days_left|pluralize }} left, then {% if opening.grace_expiry_action == "auto_cancel" %}the remaining applications are cancelled{% else %}the opening is flagged as overdue{% endif %}.
+        {% elif status == "overdue" %}
+          {% if opening.grace_expiry_action == "auto_cancel" %}Its grace period ended {{ opening.grace_period_ends|date:"M j, Y" }}, but the remaining applications haven't been cancelled yet. Check that the daily grace-period run is working.{% else %}Its grace period ended {{ opening.grace_period_ends|date:"M j, Y" }} without a decision.{% endif %}
+        {% elif opening.auto_cancelled %}
+          Its grace period ended {{ opening.grace_period_ends|date:"M j, Y" }} and cancelled the applications; {{ count|pluralize:"this applicant was,these applicants were" }} put back in progress since.
+        {% else %}
+          No grace period has been set.
+        {% endif %}
+      </p>
+      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+    </div>
+    <a href="{{ opening.get_absolute_url }}#closure" class="btn btn-sm btn-ghost gap-2" data-testid="in-progress-open">
+      Open {% icon "arrow-right" "size-4" %}
+    </a>
+  </div>
+</li>
+{% endwith %}

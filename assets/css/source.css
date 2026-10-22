@@ -155,3 +155,25 @@ body.card-dragging.drop-refused * {
 [data-empty] {
   @apply min-h-28 max-h-[22rem];
 }
+
+/* Navigation counts (partials/nav_links.html). In the top bar (lg and up) a link's
+   .nav-popup breaks its badge down by category: it fades in after a short pause while
+   the link is hovered or keyboard-focused, and never catches the pointer itself. The
+   sidebar has no hover, so below lg the same numbers show as a .nav-breakdown line
+   under the link's label instead. */
+.nav-popup {
+  @apply pointer-events-none invisible absolute top-full left-0 z-50 mt-2 hidden w-64 rounded-box border border-base-300 bg-base-100 p-3 text-sm font-normal text-base-content opacity-0 shadow-lg transition-[opacity,visibility] delay-150 duration-150 motion-reduce:transition-none lg:block;
+}
+.group:hover > .nav-popup,
+.group:focus-visible > .nav-popup {
+  @apply visible opacity-100;
+}
+.nav-popup-title {
+  @apply mb-2 block text-xs font-semibold tracking-wide uppercase opacity-60;
+}
+.nav-popup-row {
+  @apply flex items-center justify-between gap-3 py-0.5;
+}
+.nav-breakdown {
+  @apply basis-full pl-7 text-xs font-normal opacity-70 lg:hidden;
+}

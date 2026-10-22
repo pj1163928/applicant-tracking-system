@@ -115,6 +115,16 @@ class JobOpeningQuerySet(models.QuerySet):
             active_count=Count("applications", filter=Q(applications__stage__in=ACTIVE_STAGES))
         )
 
+    def closed_with_active_applications(self) -> "JobOpeningQuerySet":
+        """Return the closed openings with at least one application at an active stage.
+
+        Each is annotated with ``active_count``. An opening leaves this set as
+        soon as nobody is in progress; the Admin in-progress view lists it.
+        """
+        return (
+            self.filter(status=OpeningStatus.CLOSED).with_active_count().filter(active_count__gt=0)
+        )
+
     def awaiting_closure_decision(self) -> "JobOpeningQuerySet":
         """Return the closed openings with active applications and no grace period running.
 
@@ -124,12 +134,9 @@ class JobOpeningQuerySet(models.QuerySet):
         panel. That includes overdue openings (a grace period that ended), but
         not ones whose grace period is still running.
         """
-        return (
-            self.filter(status=OpeningStatus.CLOSED)
-            .filter(Q(grace_period_ends__isnull=True) | Q(grace_expired_on__isnull=False))
-            .with_active_count()
-            .filter(active_count__gt=0)
-        )
+        return self.filter(
+            Q(grace_period_ends__isnull=True) | Q(grace_expired_on__isnull=False)
+        ).closed_with_active_applications()
 
     def with_grace_period_running(self) -> "JobOpeningQuerySet":
         """Return the closed openings whose grace period ``process_grace_periods`` hasn't ended."""

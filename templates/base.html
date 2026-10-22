@@ -1,12 +1,15 @@
 {% extends "skeleton.html" %}
-{% load accounts_tags %}
+{% load accounts_tags notifications_tags in_progress_tags %}
 {% comment %}
 Layout for signed-in staff pages. Large screens (lg and up) get a top
 navigation bar; smaller screens get a menu button that slides in a sidebar
-(a DaisyUI drawer). Both menus render partials/nav_links.html.
+(a DaisyUI drawer). Both menus render partials/nav_links.html. The navigation's counts are worked
+out once here, as `attention` and (for Admins) `progress`, for both menus.
 {% endcomment %}
 
 {% block body %}
+{% attention_summary user as attention %}
+{% if user|can_view_in_progress %}{% in_progress_counts as progress %}{% endif %}
 <div class="drawer">
   <input id="nav-drawer" type="checkbox" class="drawer-toggle" aria-label="Toggle navigation menu">
 

@@ -10,4 +10,5 @@ urlpatterns = [
     path("skills/", include("openings.skill_urls")),
     path("applications/", include("applications.urls")),
     path("attention/", include("notifications.urls")),
+    path("in-progress/", include("openings.in_progress_urls")),
 ]

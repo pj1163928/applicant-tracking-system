@@ -13,6 +13,7 @@ from accounts.permissions import (
     can_manage_sources,
     can_move_applications,
     can_retire_skills,
+    can_view_in_progress,
     eligible_authorities,
 )
 from accounts.roles import HIRING_MANAGER, INTERVIEWER, RECRUITER
@@ -359,3 +360,29 @@ def test_elevated_flags_or_move_rights_never_stand_in_for_closure_authority(
     assert can_decide_closure(recruiter, rileys_opening) is False
     assert can_decide_closure(staff_without_role, rileys_opening) is False
     assert can_decide_closure(AnonymousUser(), rileys_opening) is False
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "expected"),
+    [
+        ("admin", True),
+        ("recruiter", False),
+        ("hiring_manager", False),
+        ("interviewer", False),
+        ("no_role_user", False),
+    ],
+)
+def test_only_admins_can_view_in_progress(request, user_fixture, expected):
+    assert can_view_in_progress(request.getfixturevalue(user_fixture)) is expected
+
+
+def test_inactive_admins_staff_and_anonymous_users_cannot_view_in_progress(admin, make_user):
+    admin.is_active = False
+    staff = make_user("staffer", is_staff=True)
+    in_every_group = make_user("everyone")
+    in_every_group.groups.set(Group.objects.filter(name__in=[RECRUITER, HIRING_MANAGER]))
+
+    assert can_view_in_progress(admin) is False
+    assert can_view_in_progress(staff) is False
+    assert can_view_in_progress(in_every_group) is False
+    assert can_view_in_progress(AnonymousUser()) is False

@@ -12,7 +12,12 @@ from applications.models import Application, StageChange
 from applications.services import record_application
 from applications.stages import Stage
 from candidates.models import Candidate, Source
-from notifications.attention import attention_count, closures_awaiting_decision
+from notifications.attention import (
+    AttentionSummary,
+    attention_count,
+    attention_summary,
+    closures_awaiting_decision,
+)
 from openings.models import JobOpening, OpeningEvent
 from openings.services import cancel_remaining_applications
 
@@ -153,6 +158,67 @@ def test_the_nav_badge_counts_only_closures_assigned_to_you(
     assert 'data-testid="nav-attention"' in html
     badges = re.findall(r'data-testid="attention-count"[^>]*>(\d+)<', html)
     assert badges == ([str(count)] * 2 if count else [])  # the top bar and the sidebar
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "expected"),
+    [
+        ("admin", AttentionSummary(yours=0, others=2, decides_for_others=True)),
+        ("hiring_manager", AttentionSummary(yours=1, others=1, decides_for_others=True)),
+        ("riley", AttentionSummary(yours=1, others=0, decides_for_others=False)),
+        ("recruiter", AttentionSummary(yours=0, others=0, decides_for_others=False)),
+        ("interviewer", AttentionSummary(yours=0, others=0, decides_for_others=False)),
+        ("no_role_user", AttentionSummary(yours=0, others=0, decides_for_others=False)),
+    ],
+)
+def test_the_summary_counts_yours_and_others_as_the_panel_groups_them(
+    request, closures, user_fixture, expected
+):
+    user = request.getfixturevalue(user_fixture)
+    items = closures_awaiting_decision(user)
+
+    summary = attention_summary(user)
+
+    assert summary == expected
+    assert summary.yours == sum(item.assigned_to_you for item in items)
+    assert summary.total == len(items)
+
+
+@pytest.mark.parametrize(
+    ("user_fixture", "line", "others_row"),
+    [
+        ("hiring_manager", "1 yours · 1 other", True),
+        ("admin", "0 yours · 2 others", True),
+        ("riley", "1 yours", False),
+    ],
+)
+def test_the_nav_breaks_the_count_down_in_a_popup_and_a_sidebar_line(
+    client, request, closures, user_fixture, line, others_row
+):
+    client.force_login(request.getfixturevalue(user_fixture))
+
+    html = page(client.get(reverse("accounts:home")))
+
+    popups = re.findall(
+        r'data-testid="attention-breakdown">(.*?)</span>\s*<span class="nav-breakdown"', html, re.S
+    )
+    assert len(popups) == 2  # the top bar and the sidebar
+    words = " ".join(re.sub(r"<[^>]+>", " ", popups[0]).split())
+    assert words.startswith("Needs attention Assigned to you")
+    assert ("Others you can decide for" in words) is others_row
+    lines = re.findall(r'data-testid="attention-breakdown-line">([^<]*)<', html)
+    assert lines == [line, line]
+
+
+@pytest.mark.parametrize("user_fixture", ["recruiter", "interviewer"])
+def test_the_nav_has_no_breakdown_when_nothing_awaits(client, request, closures, user_fixture):
+    client.force_login(request.getfixturevalue(user_fixture))
+
+    html = page(client.get(reverse("accounts:home")))
+
+    assert 'data-testid="attention-breakdown"' not in html
+    assert 'data-testid="attention-breakdown-line"' not in html
+    assert 'data-testid="attention-count"' not in html
 
 
 def test_the_page_groups_yours_and_others_and_links_to_each_opening(

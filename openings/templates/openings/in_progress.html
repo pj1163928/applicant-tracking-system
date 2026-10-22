@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}In progress{% endblock %}
+
+{% block content %}
+<header class="flex flex-wrap items-center gap-3">
+  <span class="grid size-11 place-items-center rounded-box bg-primary/10 text-primary" aria-hidden="true">{% icon "clipboard-list" "size-6" %}</span>
+  <div>
+    <h1 class="text-2xl font-bold sm:text-3xl">In progress</h1>
+    <p class="text-sm opacity-70">Closed openings whose applicants are still in progress, so nothing falls through the cracks. Visible to Admins only.</p>
+  </div>
+</header>
+
+{% if not items %}
+<div class="mt-6 rounded-box border border-dashed border-base-300 bg-base-100 p-8 text-center" data-testid="in-progress-empty">
+  {% icon "inbox" "mx-auto size-8 opacity-50" %}
+  <p class="mt-2 font-semibold">No closed opening has applicants in progress.</p>
+  <p class="text-sm opacity-70">When an opening closes with applicants still in progress, it shows up here until nobody is left.</p>
+</div>
+{% else %}
+<ul class="mt-6 flex flex-wrap gap-2" aria-label="Openings by status" data-testid="in-progress-counts">
+  {% for status, count in status_counts %}
+  <li class="inline-flex items-center gap-2 rounded-box border border-base-300 bg-base-100 py-1.5 pr-3 pl-2" data-testid="in-progress-count" data-status="{{ status }}">
+    {% include "openings/partials/closure_status_badge.html" %}
+    <span class="text-sm font-semibold">{{ count }}</span>
+  </li>
+  {% endfor %}
+</ul>
+
+<ul class="mt-4 grid gap-2" data-testid="in-progress-list">
+  {% for item in items %}{% include "openings/partials/in_progress_item.html" %}{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

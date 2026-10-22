@@ -377,10 +377,11 @@ An Admin-only page at `/in-progress/` listing closed openings that still have ac
 
 ### Acceptance criteria
 
-- [ ] Only Admins can open the page.
-- [ ] Only closed openings with at least one active application appear.
-- [ ] The status is Awaiting decision (no grace period set), In grace period (before the end date) or Overdue (a flag-only grace period that has expired).
-- [ ] Openings drop off the list once they have no active applicants.
+- [x] Only Admins can open the page.
+- [x] Only closed openings with at least one active application appear.
+- [x] The status is Awaiting decision (no grace period set), In grace period (before the end date) or Overdue (a flag-only grace period that has expired).
+  - *Boundaries confirmed in Phase 12:* Overdue from the end date itself, not the day after. An auto-cancel grace period whose end date has come, but which the daily run hasn't cancelled yet, is Overdue too. Once the run has cancelled, anyone put back in progress shows as Awaiting decision.
+- [x] Openings drop off the list once they have no active applicants.
 
 ### TDD
 

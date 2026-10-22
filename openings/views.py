@@ -12,6 +12,7 @@ from django.views.generic.detail import SingleObjectMixin
 
 from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import (
+    IN_PROGRESS_VIEWER_ROLES,
     OPENING_MANAGER_ROLES,
     SKILL_RETIRER_ROLES,
     can_decide_closure,
@@ -27,6 +28,7 @@ from openings.forms import (
     JobOpeningForm,
     SkillAttachForm,
 )
+from openings.in_progress import STATUS_ORDER, in_progress_openings
 from openings.models import JobOpening, Skill
 from openings.scopes import ALL, MINE, resolve_scope
 from openings.services import (
@@ -118,6 +120,26 @@ def closure_context(opening: JobOpening) -> dict:
 def plural(count: int, word: str) -> str:
     """``count`` and ``word``, with an "s" unless there is exactly one."""
     return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+class InProgressView(RoleRequiredMixin, TemplateView):
+    """The Admin in-progress view: closed openings whose applicants are still in progress.
+
+    Admins only (``can_view_in_progress``); everyone else gets 403. Each
+    opening shows its status on today's date in the project time zone.
+    """
+
+    allowed_roles = IN_PROGRESS_VIEWER_ROLES
+    template_name = "openings/in_progress.html"
+
+    def get_context_data(self, **kwargs):
+        items = in_progress_openings()
+        return super().get_context_data(**kwargs) | {
+            "items": items,
+            "status_counts": [
+                (status, sum(item.status == status for item in items)) for status in STATUS_ORDER
+            ],
+        }
 
 
 class OpeningCloseView(RoleRequiredMixin, DetailView):
