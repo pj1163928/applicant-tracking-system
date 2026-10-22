@@ -4,6 +4,7 @@ from applications.views import PipelineBoardView
 from openings.views import (
     GracePeriodExtendView,
     GracePeriodSetView,
+    OpeningAuthorityView,
     OpeningCancelRemainingView,
     OpeningCloseView,
     OpeningCreateView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path("new/", OpeningCreateView.as_view(), name="create"),
     path("<int:pk>/", OpeningDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", OpeningUpdateView.as_view(), name="update"),
+    path("<int:pk>/authority/", OpeningAuthorityView.as_view(), name="change_authority"),
     path("<int:pk>/close/", OpeningCloseView.as_view(), name="close"),
     path("<int:pk>/reopen/", OpeningReopenView.as_view(), name="reopen"),
     path("<int:pk>/restore/", OpeningRestoreView.as_view(), name="restore"),

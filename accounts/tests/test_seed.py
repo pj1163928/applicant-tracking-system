@@ -18,6 +18,7 @@ from accounts.management.commands.seed import (
     seed_moves,
 )
 from accounts.roles import role_label
+from accounts.services import deactivate_staff
 from applications.models import Application, StageChange
 from applications.services import move_application, prefill_source
 from applications.stages import Stage, can_move, requires_note
@@ -35,6 +36,7 @@ EXPECTED_ROLES = {
     "recruiter": "Recruiter",
     "manager": "Hiring Manager",
     "interviewer": "Interviewer",
+    "taylor": "Recruiter",
 }
 
 
@@ -165,7 +167,7 @@ def test_seed_adds_open_and_closed_openings_with_different_authorities():
     assert openings.count() == len(SEED_OPENINGS)
     assert set(openings.values_list("status", flat=True)) == {"open", "closed"}
     authorities = {o.designated_authority.username for o in openings}
-    assert authorities == {"manager", "recruiter", "admin"}
+    assert authorities == {"manager", "recruiter", "admin", "taylor"}
     assert openings.filter(location="").exists()
     # The Hiring Manager's "My openings" is a real subset of "All", with both statuses.
     mine = openings.filter(designated_authority__username="manager")
@@ -476,3 +478,37 @@ def test_seed_leaves_ux_researcher_ready_to_reopen_with_an_archived_applicant_to
         "jade.okafor@example.com": (Stage.SCREENING, ""),
         "lena.park@example.com": (Stage.INTERVIEW, "Archived; unarchive first"),
     }
+
+
+def test_seed_gives_taylor_openings_to_hand_over_with_someone_in_progress():
+    call_command("seed")
+
+    taylor = User.objects.get(username="taylor")
+    openings = JobOpening.objects.filter(designated_authority=taylor)
+    assert set(openings.values_list("title", flat=True)) == {
+        "Marketing Coordinator",
+        "Office Manager",
+    }
+    assert all(opening.is_open for opening in openings)
+    assert Application.objects.filter(
+        opening__title="Marketing Coordinator", stage=Stage.APPLIED
+    ).exists()
+
+
+def test_rerunning_seed_keeps_a_deactivation_and_the_handover(django_capture_on_commit_callbacks):
+    call_command("seed")
+    taylor = User.objects.get(username="taylor")
+    manager = User.objects.get(username="manager")
+    admin = User.objects.get(username="admin")
+    deactivate_staff(
+        taylor,
+        {opening: manager for opening in JobOpening.objects.filter(designated_authority=taylor)},
+        by=admin,
+    )
+
+    call_command("seed")
+
+    taylor.refresh_from_db()
+    assert taylor.is_active is False
+    assert not JobOpening.objects.filter(designated_authority=taylor).exists()
+    assert JobOpening.objects.count() == len(SEED_OPENINGS)

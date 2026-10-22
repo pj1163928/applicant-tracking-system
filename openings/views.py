@@ -12,6 +12,7 @@ from django.views.generic.detail import SingleObjectMixin
 
 from accounts.mixins import RoleRequiredMixin
 from accounts.permissions import (
+    AUTHORITY_ASSIGNER_ROLES,
     IN_PROGRESS_VIEWER_ROLES,
     OPENING_MANAGER_ROLES,
     SKILL_RETIRER_ROLES,
@@ -21,6 +22,7 @@ from accounts.permissions import (
 from applications.stages import ACTIVE_STAGES
 from config.htmx import is_htmx_partial
 from openings.forms import (
+    ChangeAuthorityForm,
     CloseOpeningForm,
     ExtendGracePeriodForm,
     GracePeriodForm,
@@ -38,6 +40,7 @@ from openings.services import (
     NOTE_REQUIRED,
     attach_skill,
     cancel_remaining_applications,
+    change_authority,
     close_opening,
     detach_skill,
     display_date,
@@ -530,6 +533,49 @@ class OpeningRestoreView(ClosureDeciderMixin, DetailView):
                 request, f"Recorded that nobody cancelled from {opening.title} will be restored."
             )
         return redirect(opening)
+
+
+class OpeningAuthorityView(RoleRequiredMixin, DetailView):
+    """Change an opening's designated authority, from a form with an optional note.
+
+    Admins and Recruiters only (``can_reassign_authority``); others get 403 for
+    GET and POST. Goes through ``change_authority()``, which writes the
+    opening's "authority changed" event and emails the new authority.
+    """
+
+    allowed_roles = AUTHORITY_ASSIGNER_ROLES
+    queryset = JobOpening.objects.select_related("designated_authority")
+    context_object_name = "opening"
+    template_name = "openings/jobopening_authority.html"
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        return self.render_to_response(
+            self.get_context_data(form=ChangeAuthorityForm(opening=self.object))
+        )
+
+    def post(self, request, *args, **kwargs):
+        self.object = opening = self.get_object()
+        form = ChangeAuthorityForm(request.POST, opening=opening)
+        if form.is_valid():
+            try:
+                change_authority(
+                    opening,
+                    to=form.cleaned_data["authority"],
+                    by=request.user,
+                    note=form.cleaned_data["note"],
+                )
+            except ValidationError as error:
+                form.add_error("authority", error)
+            else:
+                authority = opening.designated_authority
+                messages.success(
+                    request,
+                    f"{authority.get_full_name() or authority.username} is now the designated "
+                    f"authority for {opening.title}, and has been emailed.",
+                )
+                return redirect(opening)
+        return self.render_to_response(self.get_context_data(form=form))
 
 
 class OpeningCreateView(RoleRequiredMixin, SuccessMessageMixin, CreateView):

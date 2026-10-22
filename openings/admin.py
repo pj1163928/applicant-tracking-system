@@ -37,6 +37,14 @@ class JobOpeningAdmin(admin.ModelAdmin):
     ]
     inlines = [OpeningEventInline]
 
+    def get_readonly_fields(self, request, obj=None):
+        # Changing the authority goes through the app's change_authority(), which writes the
+        # opening's event and emails the new authority. A new opening still picks one.
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            readonly.append("designated_authority")
+        return readonly
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         # The admin offers and accepts the same eligible staff as the app's form.
         if db_field.name == "designated_authority":

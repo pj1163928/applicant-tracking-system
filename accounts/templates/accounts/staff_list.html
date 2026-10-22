@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Staff{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="flex items-center gap-2 text-2xl font-bold sm:text-3xl">{% icon "users-round" "size-7" %} Staff</h1>
+    <p class="mt-1 text-sm opacity-70">When someone leaves, deactivate them here: you pick who takes over each of their openings, and they can no longer log in.</p>
+  </div>
+  <a href="{% url 'admin:auth_user_add' %}" class="btn btn-outline btn-sm gap-2" data-testid="staff-add">
+    {% icon "user-plus" "size-4" %} Add staff (Django admin)
+  </a>
+</div>
+
+<ul class="mt-6 grid gap-2" data-testid="staff-list">
+  {% for person in staff %}
+  <li class="flex flex-wrap items-center gap-3 rounded-box border border-base-300 bg-base-100 p-4 {% if not person.is_active %}opacity-70{% endif %}" data-testid="staff-{{ person.username }}">
+    {% include "partials/avatar.html" with user=person size="w-9" text="text-xs" %}
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-2 font-semibold">
+        <span class="break-words">{{ person.get_full_name|default:person.username }}</span>
+        {% if person == user %}<span class="badge badge-xs badge-primary">you</span>{% endif %}
+        {% if not person.is_active %}<span class="badge badge-sm badge-ghost" data-testid="staff-inactive">Deactivated</span>{% endif %}
+      </p>
+      <p class="text-sm opacity-70">{{ person|role_label }} · {{ person.username }}{% if person.email %} · {{ person.email }}{% endif %}</p>
+    </div>
+    <span class="badge badge-ghost gap-1" data-testid="staff-opening-count">{% icon "briefcase-business" "size-3.5" %} {{ person.opening_count }} opening{{ person.opening_count|pluralize }}</span>
+    {% if person.is_active and person != user %}
+    <a href="{% url 'staff:deactivate' person.pk %}" class="btn btn-ghost btn-sm gap-1.5 text-error" data-testid="staff-deactivate">
+      {% icon "user-x" "size-4" %} Deactivate
+    </a>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

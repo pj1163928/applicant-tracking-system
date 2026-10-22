@@ -91,6 +91,12 @@ To run one test across roles, parametrize on the fixture name and use
   refuse one statement with `connection.execute_wrapper(...)`, matching on SQL such as
   `'INSERT INTO "applications_stagechange"'` or `'UPDATE "applications_application"'`.
   Parametrize over both writes. See `FailOn` in `applications/tests/test_moves.py`.
+- **All or nothing across many writes, with real commits**: when a service makes several
+  writes that each commit on their own if it forgets its transaction, use
+  `@pytest.mark.django_db(transaction=True, serialized_rollback=True)` so anything left
+  behind stays visible (and emails sent by a committed step land in the outbox), and fail the
+  *second* matching statement with `FailOn(fragment, skip=1)`. `serialized_rollback` brings
+  back the role groups each real-commit test empties out. See `accounts/tests/test_staff_services.py`.
 - **Pure rule modules** (such as `applications/tests/test_stages.py`): leave off the
   `django_db` mark, so pytest-django fails any test that touches the database. Check a
   rules table against a complete expected table written out by hand, not one rebuilt

@@ -43,6 +43,8 @@ SEED_USERS: tuple[SeedUser, ...] = (
     SeedUser("recruiter", "Riley", "Chen", RECRUITER),
     SeedUser("manager", "Morgan", "Patel", HIRING_MANAGER),
     SeedUser("interviewer", "Jordan", "Lee", INTERVIEWER),
+    # Phase 14: a second Recruiter, the authority of two openings, to demo a staff departure.
+    SeedUser("taylor", "Taylor", "Brooks", RECRUITER),
 )
 
 
@@ -155,6 +157,20 @@ SEED_OPENINGS: tuple[SeedOpening, ...] = (
         "Design clear, accessible screens from first sketch to release.",
         "Austin, TX",
     ),
+    # Phase 14: Taylor's openings, handed over when an Admin deactivates Taylor.
+    SeedOpening(
+        "Marketing Coordinator",
+        "Marketing",
+        "taylor",
+        "Plan campaigns and keep our job ads and social posts on schedule.",
+        "Amarillo, TX",
+    ),
+    SeedOpening(
+        "Office Manager",
+        "Operations",
+        "taylor",
+        "Keep the office running: supplies, visitors, travel and facilities.",
+    ),
 )
 
 
@@ -188,6 +204,8 @@ SEED_OPENING_SKILLS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Data Engineer", ("Python", "SQL", "Data modeling")),
     ("Support Specialist", ("Customer service",)),
     ("Product Designer", ("Figma", "Accessibility", "User research")),
+    ("Marketing Coordinator", ("Customer service",)),
+    ("Office Manager", ("Customer service",)),
 )
 
 
@@ -222,6 +240,8 @@ SEED_APPLICATIONS: tuple[SeedApplication, ...] = (
     SeedApplication("jade.okafor@example.com", "UX Researcher", "Company careers page"),
     # Phase 13: a third UX Researcher applicant, archived after the closure cancels her.
     SeedApplication("lena.park@example.com", "UX Researcher", "Indeed"),
+    # Phase 14: someone in progress on Taylor's opening, so its new authority has work waiting.
+    SeedApplication("farah.haddad@example.com", "Marketing Coordinator", "Career fair"),
 )
 
 
@@ -356,9 +376,9 @@ SEED_CLOSURES: tuple[SeedClosure, ...] = (
 
 class Command(BaseCommand):
     help = (
-        "Create one demo user per role, plus sample candidates (two archived), sources, "
-        "openings with skills (four of them closed, one in a grace period), and applications, "
-        "some moved along the pipeline."
+        "Create one demo user per role (plus a second Recruiter), sample candidates "
+        "(two archived), sources, openings with skills (four of them closed, one in a grace "
+        "period), and applications, some moved along the pipeline."
     )
 
     @transaction.atomic
@@ -416,17 +436,23 @@ class Command(BaseCommand):
 
 
 def seed_user(spec: SeedUser) -> tuple[User, bool]:
-    """Create or update one seeded user so it matches ``spec``; return (user, created)."""
+    """Create or update one seeded user so it matches ``spec``; return (user, created).
+
+    A new user starts active. An existing one keeps its active state, because
+    an Admin may have deactivated them on purpose (``deactivate_staff()``),
+    after handing their openings over.
+    """
     is_admin = spec.role is None
     wanted = {
         "first_name": spec.first_name,
         "last_name": spec.last_name,
         "email": f"{spec.username}@example.com",
-        "is_active": True,
         "is_staff": is_admin,
         "is_superuser": is_admin,
     }
-    user, created = User.objects.get_or_create(username=spec.username, defaults=wanted)
+    user, created = User.objects.get_or_create(
+        username=spec.username, defaults=wanted | {"is_active": True}
+    )
 
     changed = [field for field, value in wanted.items() if getattr(user, field) != value]
     for field in changed:

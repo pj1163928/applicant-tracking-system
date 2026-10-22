@@ -28,6 +28,65 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-21 — Applicant Tracking System: Phase 14/14, Authority reassignment and staff departure
+
+### Prompts
+
+1. The `/implement` skill, given `applicant-tracking-system phase 14, Also since we are wrapping this up we can also make the home page contain more information than it already has add important information such as openings the person is assigned to managing candidates and needs attenion as well as other items you see fit. Please askif more clarification is needed.`
+2. Answered the clarifying question (what "candidates the person is managing" means, since candidates have no owner) with "Both": applicants on my openings, plus my own recent work.
+3. "Looks good lets also include one other requirement. The forced write failure must roll back all changes, including authority changes, change events, notification records, emails where applicable and the staff member's is_active state. The workflow should run instaide a single database transaction. As for the second test, make sure to enfore security elegibility in the service layer for both change_authority and deactivate_staff regardless of what the form allows."
+4. "Looks good move to next" (approving the RED test for `change_authority` refusing an ineligible authority).
+5. "Ok looks good one change to make sure is good is that deactivate_staff must weap all authority changes, events. notification schedules and deactivation withing a single transaction.atomic() boundary/ Emails should not be sent through transaction.on_commit(), rollbacks can not send notifcations for changes that never commited. Other than that proceed to development." (approving the RED test for `deactivate_staff`'s all-or-nothing rule).
+6. "Ok looks good one final layout decision for the home page as it looks like it could use a little more organization. I am thining we Have needs attention top left, your opening top right applicants bottom left and recent work bottom right so that way it is balance. then if there are mor than 5 tiles in a section you can have a show more option and have it minimize and maximize"
+7. "Ok this is a little chane but, one thing I notice was the car sizes are sligthtly different sizes with the applicants and opening being large than the recent work. Can you make sure that all card heights are consistent and the same. also this is a slight style chang but can you add iconography to the pipeline board stages in the home page and the pipeline board itself."
+
+### Summary
+
+- **Outcome:** Phase 14 is built, plus a fuller home page.
+  - Recruiters and Admins change an opening's designated authority from a "Change" button on its authority panel. The change writes an "Authority changed" event ("From X to Y.", plus any note) and emails the new authority.
+  - Admins open a new Staff page (`/staff/`) and deactivate a departing person after picking a new authority for each of their openings, open or closed. `deactivate_staff` does every reassignment and the deactivation in one transaction, or nothing. Deactivated users can't log in, an open session stops working, and they drop out of every authority choice.
+  - The Django admin shows `is_active` read-only on existing users, and an opening's authority read-only once the opening exists.
+  - The home page now shows the numbers everyone shares (open openings, applicants in progress, a pipeline snapshot by stage). It also shows what is yours: Needs attention items assigned to you, your openings, the applicants on your openings, your recent work, and quick actions for your role. Sections a role can't use are left out.
+  - After prompt 6, those four lists sit in a two-by-two grid: Needs attention top left, Your openings top right, Applicants bottom left, Recent work bottom right. The pipeline snapshot spans the full width below. Each list shows 5 rows; a "Show N more" / "Show less" button reveals or hides the rest.
+  - After prompt 7, every row in those lists has the same shape, so they are all one height: a 32px icon or avatar, a one-line title and subtitle cut short with "…", and at most a small button, in a `min-h-18` box. Recent work's sentence moved into the subtitle, under the candidate's name. Each stage has its own Lucide icon, shown on the board's column headers and the home page's pipeline boxes.
+  - `uv run pytest`: 1119 passed (96 new). `uv run ruff check .` and `uv run ruff format .` are clean. One migration. The seed changed, and running it twice changes nothing.
+- **Changes:**
+  - `accounts/permissions.py`: `AUTHORITY_ASSIGNER_ROLES` and `can_reassign_authority` (Admins, Recruiters); `STAFF_MANAGER_ROLES = ()` and `can_manage_staff` (Admins). `accounts/templatetags/accounts_tags.py`: matching filters.
+  - `openings/models.py`, `openings/migrations/0006_authority_changed_event_kind.py`: the event kind `AUTHORITY_CHANGED`.
+  - `openings/services.py`: `authority_change_refusal`, `change_authority` and `display_name`, with the codes `SAME_AUTHORITY` and `INELIGIBLE_AUTHORITY`.
+  - `notifications/services.py`: `notify_new_authority`. `notifications/templates/notifications/email/authority_assigned_*.txt`: the email.
+  - `openings/forms.py`: `ChangeAuthorityForm`. `openings/views.py`: `OpeningAuthorityView`. `openings/urls.py`: `openings:change_authority`. `openings/templates/openings/jobopening_authority.html`: the page. `jobopening_detail.html`: the Change button. `partials/event_history.html`: the new event's icon.
+  - `openings/admin.py`: the authority is read-only when changing an opening.
+  - `accounts/services.py` (new): `responsible_openings`, `deactivate_refusal` and `deactivate_staff`.
+  - `accounts/forms.py` (new): `DeactivateStaffForm`. `accounts/views.py`: `StaffListView`, `StaffDeactivateView`, and the home view's context. `accounts/staff_urls.py` and `config/urls.py`: `staff:list` and `staff:deactivate`. `accounts/templates/accounts/staff_list.html` and `staff_deactivate.html`: the pages.
+  - `accounts/admin.py` (new): `StaffUserAdmin`, with `is_active` read-only on existing users.
+  - `accounts/dashboard.py` (new): the home page's queries, `Fold` (a list plus how many rows fold away) and `FOLD_AT = 5`. `templates/accounts/home.html`: the redesigned page, laid out as the grid with its fold script. `templates/partials/fold_toggle.html` (new): the Show more / Show less button. `applications/templatetags/stage_tags.py` (new): `STAGE_ICONS` and the `stage_icon` filter, with eight new icons in `templates/icons/` (file-text, scan-search, messages-square, clipboard-check, mail-check, party-popper, circle-x, undo-2) from lucide-static 1.49.0. `applications/templates/applications/partials/column.html`: each column header shows its stage's icon. `applications/tests/test_stage_icons.py` (new). `assets/css/source.css`: the `data-fold-section` rules, next to the board's matching ones. `templates/partials/nav_links.html`: a Staff link for Admins.
+  - `accounts/management/commands/seed.py`: `seed_user` no longer reactivates a deactivated user. Taylor Brooks (Recruiter) is the authority of Marketing Coordinator (with Farah in progress) and Office Manager, for a departure demo.
+  - Tests: `openings/tests/test_authority_services.py`, `test_authority_views.py`; `accounts/tests/test_staff_services.py`, `test_staff_views.py`, `test_home.py`; `test_seed.py` extended.
+  - `CLAUDE.md`, `docs/TESTING.md` (the real-commit all-or-nothing pattern) and the plan's checkboxes.
+- **TDD:**
+  1. `change_authority` refuses an ineligible new authority (an Interviewer, a user without a role, an inactive Recruiter), even when an Admin asks, and writes nothing and emails nobody.
+  2. `deactivate_staff` keeps nothing unless every opening is reassigned and every write succeeds. The test runs four ways: a missing reassignment, and the database refusing the second opening update, the second event, or the deactivation. Each time the user stays active, both openings keep their authority, there are no events or candidate messages, and the outbox is empty.
+  3. `deactivate_staff` refusing an ineligible new authority (including the person leaving, and someone deactivated since the form loaded) was added as an ordinary test, not a RED cycle; see Sideways.
+- **Decisions:**
+  - "Candidates the person is managing" means the applicants on openings the user is the designated authority of, since candidates have no owner (the user chose "Both", with recent work).
+  - The note on an authority change is optional. Picking the current authority again is refused.
+  - Each reassigned opening sends its own email. Departures cover open and closed openings, and refuse self-deactivation and already-inactive accounts.
+  - Reactivating an account isn't built (it isn't in the PRD). With `is_active` read-only, undoing a mistaken deactivation needs the Django shell.
+  - Changing someone's groups in the Django admin could still make a current authority ineligible. That's out of scope, so it was left as is and noted.
+- **Deviations:**
+  - The user added that the rollback test must cover every write, including notifications and `is_active`, inside one `transaction.atomic()`, and that eligibility must be enforced in the service for both entry points. Both were built.
+  - Prompt 5 said emails "should not be sent through `transaction.on_commit()`". It was read as "only after commit", because sending outside `on_commit` would let a rolled-back change still send email, the opposite of the stated aim. Staff emails stay on `send_after_commit`, and the user was told.
+  - Staff emails have no database record (only candidate emails are logged), so the rollback test checks `CandidateMessage` and the outbox.
+- **Sideways:**
+  - The first version of the rollback test ran inside the usual test transaction. In the deactivation-fails case, the scaffold's failed write broke that transaction, so the test errored instead of failing an assertion. It was switched to real commits (`transaction=True`), which also wiped the role groups for later cases; `serialized_rollback=True` fixed that.
+  - While making cycle 1 pass, the per-opening eligibility check went into `deactivate_refusal` along with the completeness check. That was more than cycle 1's test asked for, so behavior 2's `deactivate_staff` test could never go RED (`change_authority` enforces the rule too). The user was told, and it became an ordinary test.
+  - Two seed tests assumed Isaac had one application, so Marketing Coordinator's seeded applicant became Farah instead.
+  - Prompt 6 showed that the first home page capped each list at 6 rows, which also capped the Needs attention tile's number. Folding replaced the cap: Needs attention and Your openings now load every row, and Applicants and Recent work load up to 20 (`LIST_LIMIT`), with a note when there are more applicants than that.
+  - Ruff wanted the nested `with` statements in the two TDD tests combined. That was a mechanical repair; what they assert didn't change.
+
+---
+
 ## 2026-10-21 — Applicant Tracking System: Phase 13/14, Reopening and restoring applicants
 
 ### Prompts

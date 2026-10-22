@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Change authority for {{ opening.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ opening.get_absolute_url }}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} Back to {{ opening.title }}
+</a>
+
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-linear-to-r from-primary to-secondary" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary" aria-hidden="true">{% icon "handshake" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Change the designated authority</h1>
+        <p class="mt-1 text-sm opacity-70">{{ opening.title }} · {{ opening.department }} · {{ opening.get_status_display }}</p>
+      </div>
+    </div>
+
+    <div class="rounded-box bg-base-200/60 p-4" data-testid="current-authority">
+      <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">Currently</h2>
+      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+    </div>
+
+    <ul class="grid gap-2 text-sm">
+      <li class="flex items-start gap-2">{% icon "user-check" "size-4 mt-0.5 shrink-0 opacity-70" %} The new authority makes this opening's offer and closure decisions from now on, and anything waiting in Needs attention moves to them.</li>
+      <li class="flex items-start gap-2">{% icon "mail" "size-4 mt-0.5 shrink-0 opacity-70" %} They're emailed, and the change is added to the opening's history.</li>
+    </ul>
+
+    {% for error in form.non_field_errors %}<div role="alert" class="alert alert-error alert-soft">{% icon "triangle-alert" "size-5" %}<span>{{ error }}</span></div>{% endfor %}
+    {% include "applications/partials/field.html" with field=form.authority %}
+    {% include "applications/partials/field.html" with field=form.note %}
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{{ opening.get_absolute_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary gap-2" data-testid="confirm-change-authority">
+        {% icon "handshake" "size-4" %} Change authority
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

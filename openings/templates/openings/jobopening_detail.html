@@ -50,7 +50,14 @@
       <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
         {% icon "user-check" "size-4" %} Designated authority
       </h2>
-      <div class="mt-2">{% include "openings/partials/authority.html" %}</div>
+      <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {% include "openings/partials/authority.html" %}
+        {% if user|can_reassign_authority %}
+        <a href="{% url 'openings:change_authority' opening.pk %}" class="btn btn-ghost btn-sm gap-1.5" data-testid="authority-change">
+          {% icon "handshake" "size-4" %} Change
+        </a>
+        {% endif %}
+      </div>
       <p class="mt-2 text-sm opacity-70">
         {% if opening.designated_authority == user %}You make this opening's offer and closure decisions.{% else %}Makes this opening's offer and closure decisions.{% endif %}
       </p>

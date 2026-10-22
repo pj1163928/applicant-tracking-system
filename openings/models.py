@@ -332,12 +332,13 @@ class OpeningEventKind(models.TextChoices):
     GRACE_PERIOD_EXPIRED = "grace_period_expired", "Grace period ended"
     REOPENED = "reopened", "Reopened"
     APPLICATIONS_RESTORED = "applications_restored", "Applicants restored"
+    AUTHORITY_CHANGED = "authority_changed", "Authority changed"
 
 
 class OpeningEvent(models.Model):
     """One row of an opening's permanent event history: what happened, who did it, when, and why.
 
-    Written only by the closure services in ``openings.services``, never edited.
+    Written only by the services in ``openings.services``, never edited.
     """
 
     Kind = OpeningEventKind

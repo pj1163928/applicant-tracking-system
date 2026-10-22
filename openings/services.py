@@ -13,6 +13,10 @@ handles each grace period's end. ``reopen_opening()`` opens it again, and
 ``restore_applications()`` puts applicants cancelled at its latest closure back
 where they were. Each writes an ``OpeningEvent``, checks its own permission
 rule, and changes stages only through ``applications.services.move_application()``.
+
+``change_authority()`` hands an opening to a new designated authority, with an
+event and an email; ``accounts.services.deactivate_staff()`` uses it for every
+opening of someone who is leaving.
 """
 
 from collections.abc import Iterable
@@ -25,7 +29,13 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateformat import format as format_date
 
-from accounts.permissions import can_decide_closure, can_manage_opening_skills, can_manage_openings
+from accounts.permissions import (
+    can_be_designated_authority,
+    can_decide_closure,
+    can_manage_opening_skills,
+    can_manage_openings,
+    can_reassign_authority,
+)
 from applications.models import Application, StageChange
 from applications.services import ARCHIVED_CANDIDATE, move_application, move_refusal
 from applications.stages import ACTIVE_STAGES, Stage
@@ -33,6 +43,7 @@ from notifications.models import CandidateMessage
 from notifications.services import (
     notify_authority_of_closure,
     notify_authority_of_overdue,
+    notify_new_authority,
     send_candidate_message,
 )
 from openings.grace import due_reminder, grace_period_has_ended
@@ -897,6 +908,90 @@ def restore_applications(
         note=restore_note(chosen, left=len(cancellations) - len(chosen)),
     )
     return rows
+
+
+SAME_AUTHORITY = "same_authority"
+INELIGIBLE_AUTHORITY = "ineligible_authority"
+
+
+def display_name(user: User) -> str:
+    """``user``'s full name, or their username if they have none."""
+    return user.get_full_name() or user.username
+
+
+def authority_change_refusal(
+    opening: JobOpening, to: User, by: User
+) -> PermissionDenied | ValidationError | None:
+    """Return why ``by`` can't make ``to`` the designated authority of ``opening``, or None.
+
+    Only Admins and Recruiters may (``can_reassign_authority``). ``to`` must be
+    eligible (``can_be_designated_authority``: an active Admin, Recruiter or
+    Hiring Manager) and someone other than the current authority. This is
+    checked here, not only by the form's choices, so no caller can get around
+    it. Judges ``opening`` and ``to`` as given, so ``change_authority()``
+    passes the stored rows.
+    """
+    if not can_reassign_authority(by):
+        return PermissionDenied(
+            "Only Admins and Recruiters can change an opening's designated authority."
+        )
+    if not can_be_designated_authority(to):
+        return ValidationError(
+            f"{display_name(to)} can't be a designated authority. Pick an active Admin, "
+            "Recruiter or Hiring Manager.",
+            code=INELIGIBLE_AUTHORITY,
+        )
+    if to.pk == opening.designated_authority_id:
+        return ValidationError(
+            f"{display_name(to)} is already the designated authority for {opening.title}.",
+            code=SAME_AUTHORITY,
+        )
+    return None
+
+
+@transaction.atomic
+def change_authority(opening: JobOpening, *, to: User, by: User, note: str = "") -> OpeningEvent:
+    """Make ``to`` the designated authority of ``opening``, open or closed.
+
+    Writes an "authority changed" event naming both people, and emails ``to``
+    once the transaction commits. From then on ``to`` makes the opening's
+    offer and closure decisions, and anything waiting in Needs attention moves
+    to them.
+
+    Locks and re-reads the stored opening and ``to``, then checks
+    ``authority_change_refusal()``: raises ``PermissionDenied`` unless ``by``
+    may change authorities, and ``ValidationError`` if ``to`` isn't eligible
+    or is already the authority. Nothing is written when it refuses. Returns
+    the new event.
+    """
+    stored = (
+        JobOpening.objects.select_for_update()
+        .select_related("designated_authority")
+        .get(pk=opening.pk)
+    )
+    to = User.objects.select_for_update().get(pk=to.pk)
+    refusal = authority_change_refusal(stored, to, by)
+    if refusal is not None:
+        raise refusal
+    previous = stored.designated_authority
+    note = note.strip()
+    stored.designated_authority = to
+    stored.save(update_fields=["designated_authority", "updated_at"])
+    lines = [f"From {display_name(previous)} to {display_name(to)}."]
+    if note:
+        lines.append(f"Reason: {note}")
+    event = OpeningEvent.objects.create(
+        opening=stored, kind=OpeningEvent.Kind.AUTHORITY_CHANGED, by=by, note="\n".join(lines)
+    )
+    notify_new_authority(
+        stored,
+        previous=previous,
+        active_count=stored.applications.filter(stage__in=ACTIVE_STAGES).count(),
+        by=by,
+        note=note,
+    )
+    opening.designated_authority, opening.updated_at = to, stored.updated_at
+    return event
 
 
 def restore_note(chosen: list[StageChange], *, left: int) -> str:

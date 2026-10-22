@@ -8,12 +8,14 @@ expanded. `data-drop-stage` makes the column a drag-and-drop target, and
 A column with more than three cards folds to the newest three; the board's
 script sets data-expanded on the column to show the rest and its search box.
 {% endcomment %}
+{% load stage_tags %}
 {% if column.collapsible %}
 <details class="drop-target group min-w-0 rounded-box border border-base-300 bg-base-300/40" data-drop-stage="{{ column.stage }}" data-testid="column-{{ column.stage }}">
   <summary class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-box px-3 py-2 transition-colors hover:bg-base-300/60 motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
            aria-label="{{ column.stage.label }}: show or hide">
     <span class="flex items-center gap-2 text-sm font-semibold">
       {% icon "chevron-down" "size-4 -rotate-90 transition-transform group-open:rotate-0 motion-reduce:transition-none" %}
+      {% icon column.stage|stage_icon "size-4 opacity-70" %}
       {{ column.stage.label }}
     </span>
     <span id="count-{{ column.stage }}" class="badge badge-sm badge-neutral" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
@@ -25,8 +27,11 @@ script sets data-expanded on the column to show the rest and its search box.
 </details>
 {% else %}
 <section class="drop-target flex min-w-0 flex-col rounded-box border border-base-300 {% if column.stage == 'hired' %}bg-success/5{% else %}bg-base-100/60{% endif %}" aria-labelledby="column-{{ column.stage }}-heading" data-drop-stage="{{ column.stage }}" data-testid="column-{{ column.stage }}">
-  <h2 id="column-{{ column.stage }}-heading" class="flex items-center justify-between px-3 py-2 text-sm font-semibold">
-    {{ column.stage.label }}
+  <h2 id="column-{{ column.stage }}-heading" class="flex items-center justify-between gap-2 px-3 py-2 text-sm font-semibold">
+    <span class="flex min-w-0 items-center gap-1.5">
+      {% icon column.stage|stage_icon "size-4 opacity-70" %}
+      <span class="truncate">{{ column.stage.label }}</span>
+    </span>
     <span id="count-{{ column.stage }}" class="badge badge-sm {% if column.stage == 'hired' %}badge-success{% else %}badge-ghost{% endif %}" data-testid="count-{{ column.stage }}">{{ column.count }}</span>
   </h2>
   {% include "applications/partials/stage_search.html" %}

@@ -1,21 +1,48 @@
 {% extends "base.html" %}
-{% load accounts_tags %}
+{% load accounts_tags stage_tags %}
 
 {% block title %}Home{% endblock %}
 
 {% block content %}
+{% comment %}
+The signed-in user's starting point (accounts.views.HomeView, built from accounts.dashboard).
+Four lists in a two-by-two grid: Needs attention and Your openings on top, Applicants on your
+openings and Your recent work below; then the pipeline snapshot across the full width. Each
+list is an accounts.dashboard.Fold: rows past `fold_at` are marked data-beyond-fold and hidden
+until its section is expanded (partials/fold_toggle.html). Every row has the same shape, so
+they are all one height: a size-8 icon or avatar, a one-line title and a one-line subtitle
+(both truncated) and at most a btn-sm on the right, in a min-h-18 box. Sections a role can't
+use are left out: `may_own_openings` gates the first three, `may_change` gates Your recent work.
+{% endcomment %}
 <section class="card overflow-hidden border border-base-300 bg-base-100 shadow-sm">
   <div class="h-1.5 bg-linear-to-r from-primary via-secondary to-accent" aria-hidden="true"></div>
-  <div class="card-body gap-4 sm:flex-row sm:items-center">
-    <div class="self-start sm:self-center">
-      {% include "partials/avatar.html" with size="w-16" text="text-xl" %}
+  <div class="card-body gap-4 md:flex-row md:items-center">
+    <div class="flex min-w-0 flex-1 items-center gap-4">
+      <div class="shrink-0">
+        {% include "partials/avatar.html" with size="w-14" text="text-lg" %}
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Welcome, {{ user.get_full_name|default:user.username }}</h1>
+        <p class="mt-1 flex flex-wrap items-center gap-2">
+          You are signed in as
+          <span class="badge badge-primary gap-1">{% icon "shield-user" "size-3.5" %} {{ user|role_label }}</span>
+        </p>
+      </div>
     </div>
-    <div>
-      <h1 class="text-2xl font-bold sm:text-3xl">Welcome, {{ user.get_full_name|default:user.username }}</h1>
-      <p class="mt-2 flex flex-wrap items-center gap-2">
-        You are signed in as
-        <span class="badge badge-primary gap-1">{% icon "shield-user" "size-3.5" %} {{ user|role_label }}</span>
-      </p>
+    <div class="flex flex-wrap gap-2" data-testid="quick-actions">
+      {% if user|can_manage_candidates %}
+      <a href="{% url 'candidates:create' %}" class="btn btn-sm btn-primary gap-1.5" data-testid="quick-add-candidate">{% icon "user-plus" "size-4" %} Add candidate</a>
+      {% endif %}
+      {% if user|can_manage_applications %}
+      <a href="{% url 'applications:create' %}" class="btn btn-sm btn-outline gap-1.5" data-testid="quick-record-application">{% icon "file-plus" "size-4" %} Record application</a>
+      {% endif %}
+      {% if user|can_manage_openings %}
+      <a href="{% url 'openings:create' %}" class="btn btn-sm btn-outline gap-1.5" data-testid="quick-new-opening">{% icon "plus" "size-4" %} New opening</a>
+      {% endif %}
+      {% if not user|can_make_changes %}
+      <a href="{% url 'openings:list' %}" class="btn btn-sm btn-outline gap-1.5">{% icon "briefcase-business" "size-4" %} Browse openings</a>
+      <a href="{% url 'candidates:list' %}" class="btn btn-sm btn-outline gap-1.5">{% icon "users-round" "size-4" %} Browse candidates</a>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -26,4 +53,176 @@
   <span>Your account is view-only: you can look at everything, but you can't make changes.</span>
 </div>
 {% endif %}
+
+<dl class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="home-stats">
+  <a href="{% url 'openings:list' %}?show=all" class="rounded-box border border-base-300 bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="stat-open-openings">
+    <dt class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide opacity-60">{% icon "briefcase-business" "size-4" %} Open openings</dt>
+    <dd class="mt-1 text-3xl font-bold">{{ stats.open_openings }}</dd>
+  </a>
+  <div class="rounded-box border border-base-300 bg-base-100 p-4" data-testid="stat-in-progress">
+    <dt class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide opacity-60">{% icon "users-round" "size-4" %} In progress</dt>
+    <dd class="mt-1 text-3xl font-bold">{{ stats.in_progress }}</dd>
+    <dd class="text-xs opacity-60">applicants, all openings</dd>
+  </div>
+  {% if may_own_openings %}
+  <a href="{% url 'openings:list' %}?show=mine" class="rounded-box border border-base-300 bg-base-100 p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none" data-testid="stat-your-openings">
+    <dt class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide opacity-60">{% icon "user-check" "size-4" %} Your openings</dt>
+    <dd class="mt-1 text-3xl font-bold">{{ stats.your_openings }}</dd>
+    <dd class="text-xs opacity-60">{{ stats.your_in_progress }} applicant{{ stats.your_in_progress|pluralize }} in progress</dd>
+  </a>
+  <a href="{% url 'notifications:attention' %}" class="rounded-box border p-4 transition-shadow hover:shadow-sm motion-reduce:transition-none {% if my_attention %}border-warning/50 bg-warning/10{% else %}border-base-300 bg-base-100{% endif %}" data-testid="stat-attention">
+    <dt class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide opacity-60">{% icon "bell" "size-4" %} Needs attention</dt>
+    <dd class="mt-1 text-3xl font-bold">{{ my_attention|length }}</dd>
+    <dd class="text-xs opacity-60">waiting on you</dd>
+  </a>
+  {% endif %}
+</dl>
+
+{% if may_own_openings or may_change %}
+<div class="mt-6 grid gap-6 lg:grid-cols-2" data-testid="home-grid">
+  {% if may_own_openings %}
+  {# Top left #}
+  <section aria-labelledby="attention-heading" data-fold-section data-testid="home-attention">
+    <div class="flex items-center justify-between gap-2">
+      <h2 id="attention-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "bell" "size-5" %} Needs attention {% if my_attention %}<span class="badge badge-sm badge-warning">{{ my_attention|length }}</span>{% endif %}</h2>
+      <a href="{% url 'notifications:attention' %}" class="link link-hover text-sm">Open panel</a>
+    </div>
+    {% if my_attention %}
+    <ul class="mt-2 grid gap-2">
+      {% for item in my_attention %}
+      {% with opening=item.opening %}
+      <li class="flex min-h-18 items-center gap-3 rounded-box border border-warning/40 bg-base-100 px-3 py-2.5"{% if forloop.counter > my_attention.fold_at %} data-beyond-fold{% endif %} data-testid="home-attention-item">
+        <span class="grid size-8 shrink-0 place-items-center rounded-full {% if opening.is_overdue %}bg-error/10 text-error{% else %}bg-warning/15 text-warning{% endif %}" aria-hidden="true">{% if item.kind == "restore" %}{% icon "lock-open" "size-4" %}{% else %}{% icon "lock" "size-4" %}{% endif %}</span>
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 items-center gap-2">
+            <a href="{{ opening.get_absolute_url }}" class="link link-hover truncate font-semibold">{{ opening.title }}</a>
+            {% if opening.is_overdue %}<span class="badge badge-sm badge-error shrink-0">Overdue</span>{% endif %}
+          </p>
+          <p class="truncate text-sm opacity-70">{% if item.kind == "restore" %}Reopened · {{ opening.restorable_count }} cancelled applicant{{ opening.restorable_count|pluralize }} to restore or not{% else %}Closed · {{ opening.active_count }} still in progress{% endif %}</p>
+        </div>
+        {% if item.kind == "restore" %}
+        <a href="{% url 'openings:restore' opening.pk %}" class="btn btn-sm btn-primary shrink-0 gap-1.5">Choose {% icon "arrow-right" "size-4" %}</a>
+        {% else %}
+        <a href="{{ opening.get_absolute_url }}#closure" class="btn btn-sm btn-primary shrink-0 gap-1.5">Decide {% icon "arrow-right" "size-4" %}</a>
+        {% endif %}
+      </li>
+      {% endwith %}
+      {% endfor %}
+    </ul>
+    {% include "partials/fold_toggle.html" with fold=my_attention %}
+    {% else %}
+    <p class="mt-2 flex items-center gap-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="home-attention-empty">{% icon "inbox" "size-5" %} Nothing is waiting on you.</p>
+    {% endif %}
+  </section>
+
+  {# Top right #}
+  <section aria-labelledby="openings-heading" data-fold-section data-testid="home-openings">
+    <div class="flex items-center justify-between gap-2">
+      <h2 id="openings-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "briefcase-business" "size-5" %} Your openings {% if my_openings %}<span class="badge badge-sm badge-ghost">{{ my_openings|length }}</span>{% endif %}</h2>
+      <a href="{% url 'openings:list' %}?show=mine" class="link link-hover text-sm">See all</a>
+    </div>
+    {% if my_openings %}
+    <ul class="mt-2 grid gap-2">
+      {% for opening in my_openings %}
+      <li class="flex min-h-18 items-center gap-3 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"{% if forloop.counter > my_openings.fold_at %} data-beyond-fold{% endif %} data-testid="home-opening">
+        <span class="grid size-8 shrink-0 place-items-center rounded-full {% if opening.is_open %}bg-primary/10 text-primary{% else %}bg-base-300/70{% endif %}" aria-hidden="true">{% icon "briefcase-business" "size-4" %}</span>
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 items-center gap-2">
+            <a href="{{ opening.get_absolute_url }}" class="link link-hover truncate font-semibold">{{ opening.title }}</a>
+            <span class="shrink-0">{% include "openings/partials/status_badge.html" %}</span>
+          </p>
+          <p class="truncate text-sm opacity-70">{{ opening.department }} · {{ opening.active_count }} in progress{% if opening.grace_period_running %} · <span class="text-warning" data-testid="home-opening-grace">grace period ends {{ opening.grace_period_ends|date:"M j" }}</span>{% endif %}</p>
+        </div>
+        <a href="{% url 'openings:board' opening.pk %}" class="btn btn-ghost btn-sm shrink-0 gap-1.5" aria-label="Pipeline board for {{ opening.title }}">{% icon "square-kanban" "size-4" %}<span class="hidden sm:inline">Board</span></a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% include "partials/fold_toggle.html" with fold=my_openings %}
+    {% else %}
+    <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="home-openings-empty">You aren't the designated authority of any opening yet.</p>
+    {% endif %}
+  </section>
+
+  {# Bottom left #}
+  <section aria-labelledby="applicants-heading" data-fold-section data-testid="home-applicants">
+    <h2 id="applicants-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "users-round" "size-5" %} Applicants on your openings {% if stats.your_in_progress %}<span class="badge badge-sm badge-ghost">{{ stats.your_in_progress }}</span>{% endif %}</h2>
+    {% if my_applicants %}
+    <ul class="mt-2 grid gap-2">
+      {% for application in my_applicants %}
+      <li class="flex min-h-18 items-center gap-3 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"{% if forloop.counter > my_applicants.fold_at %} data-beyond-fold{% endif %} data-testid="home-applicant">
+        <span class="shrink-0">{% include "partials/avatar.html" with user=application.candidate size="w-8" text="text-xs" %}</span>
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 items-center gap-2">
+            <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover truncate font-semibold">{{ application.candidate.full_name }}</a>
+            <span class="shrink-0">{% include "applications/partials/stage_badge.html" %}</span>
+          </p>
+          <p class="truncate text-sm opacity-70">{{ application.opening.title }} · updated {{ application.updated_at|timesince }} ago</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% include "partials/fold_toggle.html" with fold=my_applicants %}
+    {% if stats.your_in_progress > my_applicants|length %}
+    <p class="mt-2 text-sm opacity-70" data-testid="home-applicants-more">The {{ my_applicants|length }} most recently active of {{ stats.your_in_progress }}. Open an opening's board to see the rest.</p>
+    {% endif %}
+    {% else %}
+    <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="home-applicants-empty">Nobody is in progress on your openings.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if may_change %}
+  {# Bottom right #}
+  <section aria-labelledby="work-heading" data-fold-section data-testid="home-work">
+    <h2 id="work-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "history" "size-5" %} Your recent work</h2>
+    {% if my_work %}
+    <ol class="mt-2 grid gap-2">
+      {% for change in my_work %}
+      {% with application=change.application %}
+      <li class="flex min-h-18 items-center gap-3 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"{% if forloop.counter > my_work.fold_at %} data-beyond-fold{% endif %} data-testid="home-work-item">
+        <span class="grid size-8 shrink-0 place-items-center rounded-full bg-base-200" aria-hidden="true">{% icon change.to_stage|stage_icon "size-4" %}</span>
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 items-center gap-2">
+            <a href="{{ application.candidate.get_absolute_url }}" class="link link-hover truncate font-semibold">{{ application.candidate.full_name }}</a>
+            {% if change.cause != "manual" %}<span class="badge badge-sm badge-ghost shrink-0">{{ change.get_cause_display }}</span>{% endif %}
+          </p>
+          <p class="truncate text-sm opacity-70">{% if change.from_stage %}Moved from {{ change.get_from_stage_display }} to {{ change.get_to_stage_display }}{% else %}Recorded as Applied{% endif %} · {{ application.opening.title }} · <time datetime="{{ change.changed_at|date:'c' }}">{{ change.changed_at|timesince }} ago</time></p>
+        </div>
+      </li>
+      {% endwith %}
+      {% endfor %}
+    </ol>
+    {% include "partials/fold_toggle.html" with fold=my_work %}
+    {% else %}
+    <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="home-work-empty">Applications you record and moves you make will show up here.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+
+<section class="mt-6" aria-labelledby="pipeline-heading" data-testid="home-pipeline">
+  <h2 id="pipeline-heading" class="flex items-center gap-2 text-lg font-bold">{% icon "square-kanban" "size-5" %} Pipeline across open openings</h2>
+  <ol class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+    {% for row in pipeline %}
+    <li class="rounded-box border border-base-300 bg-base-100 p-3" data-testid="pipeline-{{ row.stage }}">
+      <p class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide opacity-60">{% icon row.stage|stage_icon "size-4" %} <span class="truncate">{{ row.stage.label }}</span></p>
+      <p class="mt-1 text-2xl font-bold">{{ row.count }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<script>
+  // Each home-page list shows its first rows; its toggle shows or hides the rest.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-fold-button]");
+    if (!button) return;
+    const section = button.closest("[data-fold-section]");
+    const expanded = "expanded" in section.dataset;
+    if (expanded) delete section.dataset.expanded;
+    else section.dataset.expanded = "";
+    button.setAttribute("aria-expanded", expanded ? "false" : "true");
+  });
+</script>
 {% endblock %}

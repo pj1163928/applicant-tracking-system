@@ -189,6 +189,32 @@ def can_decide_closure(user: AnyUser, opening: "JobOpening") -> bool:
     return has_role(user, *CLOSURE_DECIDER_ROLES) or is_eligible_authority_of(user, opening)
 
 
+# Roles that change an opening's designated authority. Admins always pass role checks.
+AUTHORITY_ASSIGNER_ROLES: tuple[str, ...] = (RECRUITER,)
+
+
+def can_reassign_authority(user: AnyUser) -> bool:
+    """Return True if the user may change an opening's designated authority.
+
+    That is an Admin or a Recruiter. Hiring Managers pick an authority when
+    they create an opening, but can't change it afterwards. Who may be picked
+    is ``can_be_designated_authority()``.
+    """
+    return has_role(user, *AUTHORITY_ASSIGNER_ROLES)
+
+
+# Roles that deactivate departing staff, besides Admins: none.
+STAFF_MANAGER_ROLES: tuple[str, ...] = ()
+
+
+def can_manage_staff(user: AnyUser) -> bool:
+    """Return True if the user may see the staff list and deactivate departing staff.
+
+    That is an active Admin only. No role grants it, and neither does ``is_staff``.
+    """
+    return has_role(user, *STAFF_MANAGER_ROLES)
+
+
 # Roles that open the in-progress view of closed openings, besides Admins: none.
 IN_PROGRESS_VIEWER_ROLES: tuple[str, ...] = ()
 

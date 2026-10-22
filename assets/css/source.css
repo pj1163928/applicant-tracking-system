@@ -147,6 +147,17 @@ body.card-dragging.drop-refused * {
   @apply rotate-180;
 }
 
+/* Home-page lists with more than five rows fold the same way: home.html marks the rest
+   data-beyond-fold, and its script sets data-expanded on the section (partials/fold_toggle.html). */
+[data-fold-section]:not([data-expanded]) [data-beyond-fold],
+[data-fold-section]:not([data-expanded]) [data-when-expanded],
+[data-fold-section][data-expanded] [data-when-folded] {
+  @apply hidden;
+}
+[data-fold-section][data-expanded] [data-fold-button] svg {
+  @apply rotate-180;
+}
+
 /* An empty column's placeholder stretches to match the tallest column in its row
    (folded columns are at most three cards tall), but never past about three cards. */
 [data-cards]:has(> [data-empty]) {

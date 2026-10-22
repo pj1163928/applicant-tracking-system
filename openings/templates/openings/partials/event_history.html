@@ -11,8 +11,8 @@ with `by` loaded).
   <ol class="mt-2 grid gap-2" data-testid="opening-events">
     {% for event in events %}
     <li class="flex items-start gap-3 rounded-box border border-base-300 bg-base-100 p-3" data-testid="opening-event-{{ event.kind }}">
-      <span class="grid size-8 shrink-0 place-items-center rounded-full {% if event.kind == 'closed' %}bg-base-300/70{% elif event.kind == 'applications_cancelled' %}bg-error/10 text-error{% elif event.kind == 'reopened' or event.kind == 'applications_restored' %}bg-success/15 text-success{% else %}bg-warning/15 text-warning{% endif %}" aria-hidden="true">
-        {% if event.kind == 'closed' %}{% icon "lock" "size-4" %}{% elif event.kind == 'reopened' %}{% icon "lock-open" "size-4" %}{% elif event.kind == 'applications_restored' %}{% icon "user-check" "size-4" %}{% elif event.kind == 'applications_cancelled' %}{% icon "user-x" "size-4" %}{% elif event.kind == 'grace_period_extended' %}{% icon "calendar-plus" "size-4" %}{% else %}{% icon "hourglass" "size-4" %}{% endif %}
+      <span class="grid size-8 shrink-0 place-items-center rounded-full {% if event.kind == 'closed' %}bg-base-300/70{% elif event.kind == 'applications_cancelled' %}bg-error/10 text-error{% elif event.kind == 'reopened' or event.kind == 'applications_restored' %}bg-success/15 text-success{% elif event.kind == 'authority_changed' %}bg-primary/10 text-primary{% else %}bg-warning/15 text-warning{% endif %}" aria-hidden="true">
+        {% if event.kind == 'closed' %}{% icon "lock" "size-4" %}{% elif event.kind == 'reopened' %}{% icon "lock-open" "size-4" %}{% elif event.kind == 'applications_restored' %}{% icon "user-check" "size-4" %}{% elif event.kind == 'applications_cancelled' %}{% icon "user-x" "size-4" %}{% elif event.kind == 'grace_period_extended' %}{% icon "calendar-plus" "size-4" %}{% elif event.kind == 'authority_changed' %}{% icon "handshake" "size-4" %}{% else %}{% icon "hourglass" "size-4" %}{% endif %}
       </span>
       <div class="min-w-0 flex-1">
         <p class="font-semibold">{{ event.get_kind_display }}</p>
@@ -23,6 +23,6 @@ with `by` loaded).
     {% endfor %}
   </ol>
   {% else %}
-  <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="opening-events-empty">Nothing has happened to this opening yet. Closing and reopening it, and decisions about its applicants, will be listed here.</p>
+  <p class="mt-2 rounded-box border border-dashed border-base-300 bg-base-100 p-4 text-sm opacity-70" data-testid="opening-events-empty">Nothing has happened to this opening yet. Closing and reopening it, decisions about its applicants, and changes of authority will be listed here.</p>
   {% endif %}
 </section>

@@ -77,6 +77,45 @@ class JobOpeningCreateForm(JobOpeningForm):
         ]
 
 
+class ChangeAuthorityForm(DaisyUIFormMixin, forms.Form):
+    """Pick an opening's new designated authority, with an optional note saying why.
+
+    The choices *and* the validation come from ``eligible_authorities()``,
+    leaving out the current authority. ``openings.services.change_authority()``
+    checks the same rule again, so it holds whatever is posted.
+    """
+
+    CLASSES = {
+        "authority": ("select w-full", "select-error"),
+        "note": ("textarea w-full", "textarea-error"),
+    }
+
+    authority = AuthorityChoiceField(
+        queryset=eligible_authorities(),
+        label="New designated authority",
+        help_text="Any active Admin, Recruiter or Hiring Manager. They'll be emailed.",
+        error_messages={
+            "required": "Pick the new designated authority.",
+            "invalid_choice": "Pick an active Admin, Recruiter or Hiring Manager.",
+        },
+    )
+    note = forms.CharField(
+        label="Note",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={"rows": 3, "placeholder": "For example: Morgan now leads the design team."}
+        ),
+        help_text="Shown in the opening's history, and in the email to the new authority.",
+    )
+
+    def __init__(self, *args, opening: JobOpening, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["authority"].queryset = eligible_authorities().exclude(
+            pk=opening.designated_authority_id
+        )
+
+
 class SkillAttachForm(DaisyUIFormMixin, forms.Form):
     """Add a skill to an opening by name: an existing one, or a new one created inline.
 

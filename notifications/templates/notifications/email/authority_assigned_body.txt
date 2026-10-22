@@ -1,0 +1,12 @@
+{% autoescape off %}Hello {{ authority.first_name|default:authority.username }},
+
+{{ changed_by }} made you the designated authority for
+{{ opening.title }} ({{ opening.department }}){% if previous %}, taking over from
+{{ previous }}{% endif %}.{% if note %}
+Their note: "{{ note }}"{% endif %}
+
+The opening is {{ opening.get_status_display|lower }}{% if active_count %}, with {{ active_count }} applicant{{ active_count|pluralize }} still in
+progress{% endif %}. As its designated authority, you make its offer
+and closure decisions. Open the opening in the ATS to see where
+things stand, and check Needs attention for anything waiting on you.
+{% endautoescape %}

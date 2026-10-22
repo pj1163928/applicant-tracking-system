@@ -436,11 +436,12 @@ Admins deactivate a departing staff member through `deactivate_staff`. The form 
 
 ### Acceptance criteria
 
-- [ ] Only Recruiters and Admins can change the designated authority. Each change writes an "authority changed" OpeningEvent and emails the new authority.
-- [ ] `deactivate_staff` refuses to run unless every opening the user is responsible for gets an eligible new authority.
-- [ ] All reassignments and the deactivation succeed together or not at all.
-- [ ] Deactivated users can't log in and no longer appear as authority choices.
-- [ ] `is_active` is read-only in the Django admin.
+- [x] Only Recruiters and Admins can change the designated authority. Each change writes an "authority changed" OpeningEvent and emails the new authority.
+- [x] `deactivate_staff` refuses to run unless every opening the user is responsible for gets an eligible new authority.
+  - *Decided in Phase 14:* "responsible for" covers open and closed openings. It also refuses deactivating yourself or someone already inactive, and checks eligibility in the service (and again in `change_authority`), not only in the form. The Django admin also shows an opening's authority read-only once it exists.
+- [x] All reassignments and the deactivation succeed together or not at all.
+- [x] Deactivated users can't log in and no longer appear as authority choices.
+- [x] `is_active` is read-only in the Django admin.
 
 ### TDD
 

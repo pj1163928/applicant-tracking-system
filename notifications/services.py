@@ -68,6 +68,32 @@ def notify_authority_of_overdue(opening: JobOpening, *, active_count: int) -> bo
     return True
 
 
+def notify_new_authority(
+    opening: JobOpening, *, previous: User | None, active_count: int, by: User, note: str = ""
+) -> bool:
+    """Email ``opening``'s (new) designated authority that it is now theirs.
+
+    ``previous`` is who held it before. Returns False, and sends nothing, if
+    the new authority has no email address.
+    """
+    authority = opening.designated_authority
+    if not authority.email:
+        return False
+    subject, body = render_email(
+        "authority_assigned",
+        {
+            "opening": opening,
+            "authority": authority,
+            "previous": previous and (previous.get_full_name() or previous.username),
+            "active_count": active_count,
+            "changed_by": by.get_full_name() or by.username,
+            "note": note,
+        },
+    )
+    send_after_commit(subject, body, authority.email)
+    return True
+
+
 def send_candidate_message(
     application: Application, kind: str, *, occasion: str, context: dict | None = None
 ) -> CandidateMessage | None:

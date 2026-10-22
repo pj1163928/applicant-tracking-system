@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load accounts_tags %}
+
+{% block title %}Deactivate {{ person.get_full_name|default:person.username }}{% endblock %}
+
+{% block content %}
+<a href="{% url 'staff:list' %}" class="btn btn-ghost btn-sm -ml-2 gap-2">
+  {% icon "arrow-left" "size-4" %} All staff
+</a>
+
+{% with name=person.get_full_name|default:person.username rows=form.rows %}
+<section class="card mx-auto mt-4 max-w-2xl overflow-hidden border border-base-300 bg-base-100 shadow-sm">
+  <div class="h-1.5 bg-error/60" aria-hidden="true"></div>
+  <form method="post" class="card-body gap-5" novalidate>
+    {% csrf_token %}
+    <div class="flex items-start gap-3">
+      <span class="grid size-11 shrink-0 place-items-center rounded-full bg-error/10 text-error" aria-hidden="true">{% icon "user-x" "size-6" %}</span>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold break-words sm:text-3xl">Deactivate {{ name }}?</h1>
+        <p class="mt-1 text-sm opacity-70">{{ person|role_label }} · {{ person.username }}</p>
+      </div>
+    </div>
+
+    <ul class="grid gap-2 text-sm">
+      <li class="flex items-start gap-2">{% icon "log-out" "size-4 mt-0.5 shrink-0 opacity-70" %} {{ name }} can no longer log in, and drops out of every list of authority choices.</li>
+      <li class="flex items-start gap-2">{% icon "history" "size-4 mt-0.5 shrink-0 opacity-70" %} Everything they did stays in the history, under their name.</li>
+      {% if rows %}
+      <li class="flex items-start gap-2 font-medium">{% icon "handshake" "size-4 mt-0.5 shrink-0 text-primary" %} Each of their {{ rows|length }} opening{{ rows|length|pluralize }} is handed to the person you pick below, who is emailed. It all happens together, or not at all.</li>
+      {% endif %}
+    </ul>
+
+    {% for error in form.non_field_errors %}<div role="alert" class="alert alert-error alert-soft" data-testid="deactivate-error">{% icon "triangle-alert" "size-5" %}<span>{{ error }}</span></div>{% endfor %}
+
+    {% if rows %}
+    <fieldset class="grid gap-3" data-testid="reassignments">
+      <legend class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">New designated authorities</legend>
+      {% for opening, field in rows %}
+      <div class="rounded-box border border-base-300 p-3" data-testid="reassign-{{ opening.pk }}">
+        <p class="flex flex-wrap items-center gap-2">
+          <a href="{{ opening.get_absolute_url }}" class="link link-hover font-semibold break-words">{{ opening.title }}</a>
+          {% include "openings/partials/status_badge.html" %}
+        </p>
+        <label class="sr-only" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        <div class="mt-2">{{ field }}</div>
+        {% for error in field.errors %}<p class="mt-1 text-sm text-error" data-testid="error-{{ field.name }}">{{ error }}</p>{% endfor %}
+      </div>
+      {% endfor %}
+    </fieldset>
+    {% else %}
+    <p class="rounded-box bg-base-200/60 p-4 text-sm" data-testid="no-openings">{{ name }} isn't the designated authority of any opening, so there's nothing to hand over.</p>
+    {% endif %}
+
+    <div class="flex flex-wrap justify-end gap-2">
+      <a href="{% url 'staff:list' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-error gap-2" data-testid="confirm-deactivate">
+        {% icon "user-x" "size-4" %} Deactivate {{ name }}
+      </button>
+    </div>
+  </form>
+</section>
+{% endwith %}
+{% endblock %}

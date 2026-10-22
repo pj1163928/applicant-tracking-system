@@ -80,6 +80,18 @@ def can_decide_closure(user: roles.AnyUser, opening) -> bool:
 
 
 @register.filter
+def can_reassign_authority(user: roles.AnyUser) -> bool:
+    """Show the change-authority action: ``{% if user|can_reassign_authority %}``."""
+    return permissions.can_reassign_authority(user)
+
+
+@register.filter
+def can_manage_staff(user: roles.AnyUser) -> bool:
+    """Show the staff list and deactivate actions: ``{% if user|can_manage_staff %}``."""
+    return permissions.can_manage_staff(user)
+
+
+@register.filter
 def can_view_in_progress(user: roles.AnyUser) -> bool:
     """Show the in-progress view's link: ``{% if user|can_view_in_progress %}``."""
     return permissions.can_view_in_progress(user)

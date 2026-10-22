@@ -60,6 +60,13 @@ breakdowns show as a hover popup in the top bar and as a line in the sidebar.
   </a>
 </li>
 {% endif %}
+{% if user|can_manage_staff %}
+<li>
+  <a href="{% url 'staff:list' %}" class="{% if section == 'staff' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'staff' %} aria-current="page"{% endif %} data-testid="nav-staff">
+    {% icon "shield-user" "size-5" %} Staff
+  </a>
+</li>
+{% endif %}
 <li>
   <a href="{% url 'skills:list' %}" class="{% if section == 'skills' %}menu-active bg-primary/10! text-primary! font-semibold{% endif %}"{% if section == 'skills' %} aria-current="page"{% endif %}>
     {% icon "graduation-cap" "size-5" %} Skills

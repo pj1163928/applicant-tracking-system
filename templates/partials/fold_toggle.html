@@ -1,0 +1,13 @@
+{% comment %}
+"Show N more" / "Show less" under a folded home-page list. Expects `fold`
+(accounts.dashboard.Fold); renders nothing unless rows are folded away. The
+section holding it carries data-fold-section, and home.html's script toggles
+data-expanded on it (styles in assets/css/source.css).
+{% endcomment %}
+{% if fold.hidden_count %}
+<button type="button" class="btn btn-ghost btn-sm mt-2 w-full gap-1.5" aria-expanded="false" data-fold-button data-testid="fold-toggle">
+  <span data-when-folded>Show {{ fold.hidden_count }} more</span>
+  <span data-when-expanded>Show less</span>
+  {% icon "chevron-down" "size-4 transition-transform motion-reduce:transition-none" %}
+</button>
+{% endif %}
